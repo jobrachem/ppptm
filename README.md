@@ -5,6 +5,8 @@
 
 -----
 
+This readme is a default template. It is currently wrong.
+
 ## Table of Contents
 
 - [Installation](#installation)
