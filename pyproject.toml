@@ -54,6 +54,24 @@ extra-dependencies = [
 [tool.hatch.envs.typing.scripts]
 check = "mypy --install-types --non-interactive {args:ppptm tests}"
 
+[tool.hatch.envs.hatch-static-analysis]
+dependencies = ["black", "flake8", "isort", "mypy", "pyupgrade"]
+
+[tool.hatch.envs.hatch-static-analysis.scripts]
+format-check = [
+  "black --check --diff {args:.}",
+  "isort --check-only --diff {args:.}",
+  "mypy --ignore-missing-imports --scripts-are-modules {args:.}"
+]
+format-fix = [
+  "isort {args:.}",
+  "black --preview {args:.}",
+  "pyupgrade --py310-plus",
+  "mypy --ignore-missing-imports --scripts-are-modules {args:.}"
+]
+lint-check = "flake8 --max-line-length=88 --per-file-ignore=__init__.py:F401 --extend-ignore=E203 {args:.}"
+lint-fix = "lint-check"
+
 
 [tool.coverage.run]
 source_pkgs = ["ppptm", "tests"]
@@ -73,3 +91,6 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
 ]
+
+[tool.isort]
+profile = "black"

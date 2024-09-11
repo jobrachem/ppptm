@@ -10,11 +10,7 @@ import tensorflow_probability.substrates.jax.distributions as tfd
 import tensorflow_probability.substrates.jax.math.psd_kernels as tfk
 from liesel.goose.optim import Stopper
 
-from ppptm.model import (
-    LocScaleTransformationModel,
-    Model,
-    TransformationModel,
-)
+from ppptm.model import LocScaleTransformationModel, Model, TransformationModel
 from ppptm.node import (
     ModelConst,
     ModelOnionCoef,

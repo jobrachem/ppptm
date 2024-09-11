@@ -78,6 +78,10 @@ def optim_loc_batched(
     n_train = jnp.shape(response_train.value)[1]
     n_validation = jnp.shape(response_validation.value)[1]
 
+    # satisfy type checker
+    n_train = n_train if n_train is not None else 1
+    n_validation = n_validation if n_validation is not None else 1
+
     likelihood_scalar_validation = n_train / n_validation
     n_batches = nloc // batch_size
 
@@ -92,7 +96,7 @@ def optim_loc_batched(
         log_lik = updated_state["_model_log_lik"].value
         log_prior = updated_state["_model_log_prior"].value
 
-        return -(log_lik + log_prior) # neg log prob
+        return -(log_lik + log_prior)  # neg log prob
 
     def _neg_log_prob_batch(
         position: Position,

@@ -460,8 +460,8 @@ class LocScaleTransformationModel(TransformationModel):
         y: Array,
         knots: Array,
         coef: OnionCoefPredictivePointProcessGP | ModelOnionCoef,
-        loc: (ModelConst | ModelVar | ParamPredictivePointProcessGP),
-        scale: (ModelConst | ModelVar | ParamPredictivePointProcessGP),
+        loc: ModelConst | ModelVar | ParamPredictivePointProcessGP,
+        scale: ModelConst | ModelVar | ParamPredictivePointProcessGP,
         to_float32: bool = True,
     ) -> None:
         self.knots = knots
