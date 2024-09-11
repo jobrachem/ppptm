@@ -24,25 +24,36 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dependencies = []
+dependencies = [
+    "liesel@git+https://github.com/liesel-devs/liesel.git@graphbuilder_float32#egg=liesel",
+    "liesel_ptm@git+https://github.com/liesel-devs/liesel-ptm.git@stream-prior#egg=liesel_ptm"
+]
 
 [project.urls]
 Documentation = "https://github.com/Johannes Brachem/ppptm#readme"
 Issues = "https://github.com/Johannes Brachem/ppptm/issues"
 Source = "https://github.com/Johannes Brachem/ppptm"
 
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.version]
 path = "ppptm/__about__.py"
 
-[tool.hatch.envs.types]
-extra-dependencies = [
-  "mypy>=1.0.0",
-]
-[tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:ppptm tests}"
 
 [tool.hatch.envs.hatch-test]
 parallel = true
+
+
+[tool.hatch.envs.typing]
+extra-dependencies = [
+  "mypy>=1.0.0",
+]
+
+[tool.hatch.envs.typing.scripts]
+check = "mypy --install-types --non-interactive {args:ppptm tests}"
+
 
 [tool.coverage.run]
 source_pkgs = ["ppptm", "tests"]
