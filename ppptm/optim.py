@@ -156,10 +156,12 @@ def optim_loc_batched(
             batches,
         )
 
-        neg_log_prob_train_batches, neg_log_prob_validation_batches, _ = (
-            jax.lax.fori_loop(
-                lower=0, upper=n_batches, body_fun=body_fun, init_val=init_val
-            )
+        (
+            neg_log_prob_train_batches,
+            neg_log_prob_validation_batches,
+            _,
+        ) = jax.lax.fori_loop(
+            lower=0, upper=n_batches, body_fun=body_fun, init_val=init_val
         )
 
         return jnp.sum(neg_log_prob_train_batches), jnp.sum(

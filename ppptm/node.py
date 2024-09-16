@@ -413,7 +413,9 @@ class GEVLocationPredictivePointProcessGP(lsl.Var):
     def hyperparameter_names(self):
         return [find_param(param).name for param in self.kernel_params.values()]
 
-    def copy_for(self, sample_locs: lsl.Var | lsl.Node | None = None) -> tuple[
+    def copy_for(
+        self, sample_locs: lsl.Var | lsl.Node | None = None
+    ) -> tuple[
         GEVLocationPredictivePointProcessGP,
         ParamPredictivePointProcessGP,
         ParamPredictivePointProcessGP,

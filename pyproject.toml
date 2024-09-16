@@ -36,6 +36,18 @@ dependencies = [
     "liesel_ptm@git+https://github.com/liesel-devs/liesel-ptm.git@stream-prior#egg=liesel_ptm"
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "flake8",
+    "pre-commit",
+    "mypy",
+    "isort",
+    "pyupgrade",
+    "pytest-cov"
+]
+
 [project.urls]
 Documentation = "https://github.com/Johannes Brachem/ppptm#readme"
 Issues = "https://github.com/Johannes Brachem/ppptm/issues"
@@ -62,7 +74,7 @@ extra-dependencies = [
 check = "mypy --install-types --non-interactive {args:ppptm tests}"
 
 [tool.hatch.envs.hatch-static-analysis]
-dependencies = ["black", "flake8", "isort", "mypy", "pyupgrade"]
+dependencies = ["black", "flake8", "isort", "mypy", "pyupgrade", "pre-commit"]
 
 [tool.hatch.envs.hatch-static-analysis.scripts]
 format-check = [
@@ -71,12 +83,9 @@ format-check = [
   "mypy --ignore-missing-imports --scripts-are-modules {args:.}"
 ]
 format-fix = [
-  "isort {args:.}",
-  "black --preview {args:.}",
-  "pyupgrade --py310-plus",
-  "mypy --ignore-missing-imports --scripts-are-modules {args:.}"
+  "pre-commit run --all",
 ]
-lint-check = "flake8 --max-line-length=88 --per-file-ignore=__init__.py:F401 --extend-ignore=E203 {args:.}"
+lint-check = ""
 lint-fix = "lint-check"
 
 
