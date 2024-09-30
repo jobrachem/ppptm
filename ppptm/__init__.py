@@ -18,6 +18,8 @@ from .node import (
     ParamPredictivePointProcessGP,
 )
 
+from .dist import CustomGEV
+
 __all__ = [
     "GEVTransformationModel",
     "LocScaleTransformationModel",
@@ -30,4 +32,5 @@ __all__ = [
     "ModelVar",
     "OnionCoefPredictivePointProcessGP",
     "ParamPredictivePointProcessGP",
+    "CustomGEV"
 ]
