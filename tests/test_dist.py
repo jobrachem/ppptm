@@ -1,9 +1,10 @@
+import jax.numpy as jnp
+import jax.random as jrd
 import pytest
 import tensorflow_probability.substrates.jax as tfp
 from tensorflow_probability.substrates.jax import tf2jax as tf
+
 from ppptm.dist import CustomGEV
-import jax.numpy as jnp
-import jax.random as jrd
 
 tfd = tfp.distributions
 
@@ -20,13 +21,15 @@ tfd = tfp.distributions
 def test_custom_gev_log_prob(loc, scale, concentration, values):
     """Test log_prob for CustomGEV for different parameters and values."""
     gev = CustomGEV(loc=loc, scale=scale, concentration=concentration)
-    gev_classic = tfd.GeneralizedExtremeValue(loc=loc, scale=scale, concentration=concentration)
+    gev_classic = tfd.GeneralizedExtremeValue(
+        loc=loc, scale=scale, concentration=concentration
+    )
 
     values_tf = tf.constant(values, dtype=tf.float32)
-    
+
     log_probs = gev.log_prob(values_tf)
     log_probs_classic = gev_classic.log_prob(values_tf)
-    
+
     assert jnp.allclose(log_probs, log_probs_classic)
 
 
@@ -46,6 +49,7 @@ def test_custom_gev_gumbel_fallback():
 
     # Assert that CustomGEV returns the same log_prob as Gumbel when concentration == 0
     tf.debugging.assert_near(gev_log_probs, gumbel_log_probs, atol=1e-5)
+
 
 def test_custom_gev_gumbel_fallback_shape():
     loc = jnp.zeros(100)
@@ -76,7 +80,8 @@ def test_custom_gev_gumbel_fallback_shape():
     ],
 )
 def test_outside_support(loc, scale, concentration, value, expected_log_prob):
-    """Test that log_prob returns a large negative value for values outside the support."""
+    """Test that log_prob returns a large negative value for values outside the support.
+    """
     # Initialize the CustomGEV distribution
     gev = CustomGEV(loc=loc, scale=scale, concentration=concentration)
 

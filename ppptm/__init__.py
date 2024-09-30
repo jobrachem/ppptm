@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
+from .dist import CustomGEV
 from .model import (
     GEVTransformationModel,
     LocScaleTransformationModel,
@@ -18,8 +19,6 @@ from .node import (
     ParamPredictivePointProcessGP,
 )
 
-from .dist import CustomGEV
-
 __all__ = [
     "GEVTransformationModel",
     "LocScaleTransformationModel",
@@ -32,5 +31,5 @@ __all__ = [
     "ModelVar",
     "OnionCoefPredictivePointProcessGP",
     "ParamPredictivePointProcessGP",
-    "CustomGEV"
+    "CustomGEV",
 ]
