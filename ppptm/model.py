@@ -521,3 +521,52 @@ class GEVTransformationModel(TransformationModel):
         )
 
         return model
+
+
+class CustomTransformationModel(TransformationModel):
+    def fit_parametric_distributionloc_batched(
+        self,
+        train: Array,
+        validation: Array,
+        locs: lsl.Var,
+        optimizer: optax.GradientTransformation | None = None,
+        stopper: ptm.Stopper | None = None,
+    ) -> OptimResult:
+        self.graph.pop_nodes_and_vars()
+
+        trafo_dist = self.response.dist_node
+        gev_dist = lsl.Dist(
+            self.parametric_distribution, **self.parametric_distribution_kwargs
+        )
+        self.response.dist_node = gev_dist
+
+        gb = lsl.GraphBuilder(to_float32=self._to_float32).add(self.response)
+        self.graph = gb.build_model()
+
+        params: list[str] = []
+        hyper_params: list[str] = []
+        for var_ in self.parametric_distribution_kwargs.values():
+            params += var_.parameter_names
+            hyper_params += var_.hyperparameter_names
+
+        result = optim_loc_batched(
+            model=self.graph,
+            params=params + hyper_params,
+            stopper=stopper,
+            optimizer=optimizer,
+            response_train=lsl.Var(jnp.asarray(train.T), name="response"),
+            response_validation=lsl.Var(jnp.asarray(validation.T), name="response"),
+            locs=locs,
+            loc_batch_size=self.response.value.shape[0],
+        )
+
+        self.graph.state = result.model_state
+        self.graph.update()
+
+        self.graph.pop_nodes_and_vars()
+        self.response.dist_node = trafo_dist
+        self.graph.update()
+        gb = lsl.GraphBuilder(to_float32=self._to_float32).add(self.response)
+        self.graph = gb.build_model()
+
+        return result

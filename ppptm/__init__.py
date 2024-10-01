@@ -4,6 +4,7 @@
 
 from .dist import CustomGEV
 from .model import (
+    CustomTransformationModel,
     GEVTransformationModel,
     LocScaleTransformationModel,
     TransformationModel,
@@ -32,4 +33,5 @@ __all__ = [
     "OnionCoefPredictivePointProcessGP",
     "ParamPredictivePointProcessGP",
     "CustomGEV",
+    "CustomTransformationModel",
 ]
