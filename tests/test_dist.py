@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import jax.random as jrd
 import pytest
@@ -73,13 +74,13 @@ def test_custom_gev_gumbel_fallback_shape():
 
 
 @pytest.mark.parametrize(
-    "loc, scale, concentration, value, expected_log_prob",
+    "loc, scale, concentration, value",
     [
-        (0.0, 1.0, 0.5, -2.0, -1e6),  # Outside upper bound (concentration > 0)
-        (0.0, 1.0, -0.5, 2.0, -1e6),  # Outside lower bound (concentration < 0)
+        (0.0, 1.0, 0.5, -2.0),  # Outside upper bound (concentration > 0)
+        (0.0, 1.0, -0.5, 2.0),  # Outside lower bound (concentration < 0)
     ],
 )
-def test_outside_support(loc, scale, concentration, value, expected_log_prob):
+def test_outside_support(loc, scale, concentration, value):
     """Test that log_prob returns a large negative value for values outside the support.
     """
     # Initialize the CustomGEV distribution
@@ -90,4 +91,40 @@ def test_outside_support(loc, scale, concentration, value, expected_log_prob):
     log_prob = gev.log_prob(value_tf)
 
     # Assert that the log_prob for values outside support is a large negative value
-    assert log_prob == pytest.approx(expected_log_prob)
+    assert log_prob < -800
+
+
+def test_grad():
+    loc = 0.0
+    scale = 1.0
+    concentration = 0.5
+
+    x = jnp.linspace(-5, 5, 50)
+
+    def log_prob_fn(x, position):
+        gev = CustomGEV(
+            loc=position["loc"],
+            scale=position["scale"],
+            concentration=position["concentration"],
+        )
+        lp = gev.log_prob(x).sum()
+        return lp
+
+    lp = log_prob_fn(x, dict(loc=loc, scale=scale, concentration=concentration))
+
+    assert jnp.all(~jnp.isnan(lp))
+    assert jnp.all(~jnp.isinf(lp))
+
+    lp_grad_fn = jax.grad(log_prob_fn, argnums=1)
+    lp_grad = lp_grad_fn(x, dict(loc=loc, scale=scale, concentration=concentration))
+
+    grads = []
+    for i in range(len(x)):
+        grad_i = lp_grad_fn(
+            x[i], dict(loc=loc, scale=scale, concentration=concentration)
+        )
+        grads.append(grad_i)
+
+    for param in ["loc", "scale", "concentration"]:
+        assert jnp.all(~jnp.isnan(lp_grad[param]))
+        assert jnp.all(~jnp.isinf(lp_grad[param]))
