@@ -323,24 +323,26 @@ class TransformationModel(Model):
             lower=0, upper=batch_indices.shape[0], body_fun=body_fun, init_val=init_val
         )
 
-        y_last_batch = y[:, last_batch_indices]
-        locs_last_batch = locs[last_batch_indices, ...]
-        model_last_batch = self.copy_for(
-            y=y_last_batch, sample_locs=lsl.Var(locs_last_batch, name="locs")
-        )
-        parametric_distributionargs_last_batch = {
-            name: model_last_batch.graph.vars[var_.name].value
-            for name, var_ in self.parametric_distribution_kwargs.items()
-        }
+        if last_batch_indices.size > 0:
+            y_last_batch = y[:, last_batch_indices]
+            locs_last_batch = locs[last_batch_indices, ...]
+            model_last_batch = self.copy_for(
+                y=y_last_batch, sample_locs=lsl.Var(locs_last_batch, name="locs")
+            )
+            parametric_distributionargs_last_batch = {
+                name: model_last_batch.graph.vars[var_.name].value
+                for name, var_ in self.parametric_distribution_kwargs.items()
+            }
 
-        dist = self.dist_class(
-            coef=model_last_batch.coef.value, **parametric_distributionargs_last_batch
-        )
-        transformation_and_logdet_fn = getattr(dist, which)
-        z_i, z_logdet_i = transformation_and_logdet_fn(y_last_batch.T)
+            dist = self.dist_class(
+                coef=model_last_batch.coef.value,
+                **parametric_distributionargs_last_batch,
+            )
+            transformation_and_logdet_fn = getattr(dist, which)
+            z_i, z_logdet_i = transformation_and_logdet_fn(y_last_batch.T)
 
-        z = z.at[:, last_batch_indices].set(z_i.T)
-        z_logdet = z_logdet.at[:, last_batch_indices].set(z_logdet_i.T)
+            z = z.at[:, last_batch_indices].set(z_i.T)
+            z_logdet = z_logdet.at[:, last_batch_indices].set(z_logdet_i.T)
 
         return z, z_logdet
 
@@ -430,22 +432,24 @@ class TransformationModel(Model):
             lower=0, upper=batch_indices.shape[0], body_fun=body_fun, init_val=init_val
         )
 
-        z_last_batch = z[:, last_batch_indices]
-        locs_last_batch = locs[last_batch_indices, ...]
-        model_last_batch = self.copy_for(
-            y=z_last_batch, sample_locs=lsl.Var(locs_last_batch, name="locs")
-        )
-        parametric_distributionargs_last_batch = {
-            name: model_last_batch.graph.vars[var_.name].value
-            for name, var_ in self.parametric_distribution_kwargs.items()
-        }
+        if last_batch_indices.size > 0:
+            z_last_batch = z[:, last_batch_indices]
+            locs_last_batch = locs[last_batch_indices, ...]
+            model_last_batch = self.copy_for(
+                y=z_last_batch, sample_locs=lsl.Var(locs_last_batch, name="locs")
+            )
+            parametric_distributionargs_last_batch = {
+                name: model_last_batch.graph.vars[var_.name].value
+                for name, var_ in self.parametric_distribution_kwargs.items()
+            }
 
-        dist = self.dist_class(
-            coef=model_last_batch.coef.value, **parametric_distributionargs_last_batch
-        )
-        inverse_transformation_fn = getattr(dist, which)
-        y_i = inverse_transformation_fn(z_last_batch.T)
-        y = y.at[:, last_batch_indices].set(y_i.T)
+            dist = self.dist_class(
+                coef=model_last_batch.coef.value,
+                **parametric_distributionargs_last_batch,
+            )
+            inverse_transformation_fn = getattr(dist, which)
+            y_i = inverse_transformation_fn(z_last_batch.T)
+            y = y.at[:, last_batch_indices].set(y_i.T)
 
         return y
 
