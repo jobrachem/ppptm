@@ -53,7 +53,7 @@ class CustomGEV(tfd.GeneralizedExtremeValue):
         )
 
         # Explicitly fall back to Gumbel distribution for concentration == 0
-        # I think the GEV gives the wrong support in this case, see this issue:
+        # I think the GEV class gives the wrong support in this case, see this issue:
         # https://github.com/tensorflow/probability/issues/1839
         log_prob = jnp.where(
             tf.equal(self.concentration, 0.0),
@@ -63,4 +63,7 @@ class CustomGEV(tfd.GeneralizedExtremeValue):
 
         # returns a penalized log prob, with the penalty getting stronger for stronger
         # deviations from the needed support.
-        return jnp.where(y <= 0, (y - 0.1) * self.support_penalty, log_prob)
+        # say, y = -1, then we have -1.5 * support penalty
+        # say, y = -0.1, then we have -0.6 * support penalty
+        # The second case has a smaller penalty, which is what we want.
+        return jnp.where(y <= 0, (y - 0.5) * self.support_penalty, log_prob)
