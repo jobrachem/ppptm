@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import jax.random as jrd
 import liesel.model as lsl
@@ -107,21 +108,22 @@ class TestKernel:
         assert kernel2.value.shape == (10, 5)
 
 
-class TestRandomWalkParamPredictivePointGP:
+class TestRandomWalkParamPredictivePointGP2:
     def test_init(self):
         amplitude = lsl.param(1.0)
         length_scale = lsl.param(1.0)
 
         locs = jrd.uniform(key, shape=(30, 2))
 
-        param = node.RandomWalkParamPredictivePointProcessGP(
-            inducing_locs=lsl.Var(locs[:5, :]),
-            sample_locs=lsl.Var(locs),
-            D=10,
-            kernel_cls=tfk.ExponentiatedQuadratic,
-            amplitude=amplitude,
-            length_scale=length_scale,
-        )
+        with jax.disable_jit(disable=False):
+            param = node.RandomWalkParamPredictivePointProcessGP(
+                inducing_locs=lsl.Var(locs[:5, :]),
+                sample_locs=lsl.Var(locs),
+                D=10,
+                kernel_cls=tfk.ExponentiatedQuadratic,
+                amplitude=amplitude,
+                length_scale=length_scale,
+            )
 
         assert not jnp.any(jnp.isinf(param.value))
 

@@ -483,6 +483,8 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
     """
     Assumes the intrinsic model of coregionalization.
 
+    Parameterized using matrices to save memory.
+
     Params
     ------
     D
@@ -518,10 +520,7 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
 
         W = rw_weight_matrix(D)
 
-        nrow_W = W.shape[0]
-
         n_inducing_locs = kernel_uu.value.shape[0]
-        n_sample_locs = kernel_du.value.shape[0]
 
         latent_var = lsl.param(
             jnp.zeros((n_inducing_locs * (W.shape[1]),)),
@@ -532,13 +531,11 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
         salt = jnp.eye(kernel_uu.value.shape[0]) * 1e-6
 
         def _compute_param(latent_var, Kuu, Kdu):
-            Kuu = Kuu + salt
-            L = jnp.linalg.cholesky(Kuu)
-            Li = jnp.linalg.inv(L)
+            Li = jnp.linalg.inv(jnp.linalg.cholesky(Kuu + salt))
 
-            Kdu_uui = jnp.kron(W, (Kdu @ Li.T))
-            delta_long = Kdu_uui @ latent_var
-            delta_mat = jnp.reshape(delta_long, (nrow_W, n_sample_locs))
+            latent_mat = jnp.reshape(latent_var, shape=(n_inducing_locs, W.shape[1]))
+
+            delta_mat = W @ (Kdu @ Li.T @ latent_mat).T
 
             return delta_mat
 
