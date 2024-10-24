@@ -61,11 +61,14 @@ class CustomGEV(tfd.GeneralizedExtremeValue):
             super().log_prob(safe_value),
         )
 
-        n_support_violations = (y <= 0).sum()
+        n_support_violations = jnp.max(jnp.array([(y <= 0).sum(), 1.0]))
 
         # returns a penalized log prob, with the penalty getting stronger for stronger
         # deviations from the needed support.
         # say, y = -1, then we have -1.5 * support penalty
         # say, y = -0.1, then we have -0.6 * support penalty
         # The second case has a smaller penalty, which is what we want.
-        return jnp.where(y <= 0, (y - 0.5) * (self.support_penalty / n_support_violations), log_prob)
+        lp = jnp.where(
+            y <= 0, (y - 0.5) * (self.support_penalty / n_support_violations), log_prob
+        )
+        return lp
