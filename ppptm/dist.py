@@ -10,6 +10,7 @@ class CustomGEV(tfd.GeneralizedExtremeValue):
         scale,
         concentration,
         support_penalty: float = 1e6,
+        extend_support_boundary_by: float = 0.1,
         validate_args=False,
         allow_nan_stats=True,
         name="CustomGEV",
@@ -26,6 +27,7 @@ class CustomGEV(tfd.GeneralizedExtremeValue):
         # Create a Gumbel distribution (used if concentration == 0)
         self.gumbel_dist = tfd.Gumbel(loc=loc, scale=scale)
         self.support_penalty = support_penalty
+        self.extend_support_boundary_by = extend_support_boundary_by
 
     @classmethod
     def _parameter_properties(cls, dtype, num_classes=None):
@@ -38,6 +40,8 @@ class CustomGEV(tfd.GeneralizedExtremeValue):
         # standardized value for testing support
         # y <= 0 means the value is outside the support of the distribution
         y = 1 + self.concentration * ((value - self.loc) / self.scale)
+
+        y = y - self.extend_support_boundary_by
 
         # Using the inner-outer jnp.where pattern to obtain working gradients
         # see here: https://jax.readthedocs.io/en/latest/faq.html#gradients-contain-nan-where-using-where # noqa
@@ -61,14 +65,17 @@ class CustomGEV(tfd.GeneralizedExtremeValue):
             super().log_prob(safe_value),
         )
 
+        # the jnp.max() is necessary to avoid dividing by zero in one branch of
+        # the jnp.where.
         n_support_violations = jnp.max(jnp.array([(y <= 0).sum(), 1.0]))
 
         # returns a penalized log prob, with the penalty getting stronger for stronger
         # deviations from the needed support.
-        # say, y = -1, then we have -1.5 * support penalty
-        # say, y = -0.1, then we have -0.6 * support penalty
+        # say, y = -1, then we have -2 * support penalty
+        # say, y = -0.1, then we have -1.1 * support penalty
         # The second case has a smaller penalty, which is what we want.
-        lp = jnp.where(
-            y <= 0, (y - 0.5) * (self.support_penalty / n_support_violations), log_prob
-        )
+        pseudo_lp = (y - 1.0) * (self.support_penalty / n_support_violations)
+
+        lp = jnp.where(y <= 0, pseudo_lp, log_prob)
+
         return lp
