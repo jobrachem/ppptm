@@ -10,7 +10,7 @@ import liesel_ptm as ptm
 import optax
 import tensorflow_probability.substrates.jax.distributions as tfd
 from liesel.goose.optim import OptimResult, optim_flat
-from liesel_ptm.bsplines import BSpline
+from liesel_ptm.bsplines import ExtrapBSplineApprox
 from liesel_ptm.dist import LocScaleTransformationDist, TransformationDist
 
 from .node import (
@@ -125,10 +125,8 @@ class TransformationModel(Model):
         self.coef = coef
         self.parametric_distribution_kwargs = parametric_distribution_kwargs
 
-        bspline = BSpline(
-            knots=knots, order=3, target_slope_left=1.0, target_slope_right=1.0
-        )
-        self.fn = bspline.dot_and_deriv
+        bspline = ExtrapBSplineApprox(knots=knots, order=3)
+        self.fn = bspline.get_extrap_basis_dot_and_deriv_fn(target_slope=1.0)
         self.parametric_distribution = parametric_distribution
 
         self.dist_class = partial(
@@ -143,7 +141,7 @@ class TransformationModel(Model):
             coef=coef,
             **parametric_distribution_kwargs,
         )
-        self.response = lsl.obs(y, response_dist, name="response").update()
+        self.response = lsl.obs(y.T, response_dist, name="response").update()
         """Response variable."""
 
         self._to_float32 = to_float32
@@ -193,10 +191,10 @@ class TransformationModel(Model):
             params=self.coef.parameter_names + self.coef.hyperparameter_names,
             stopper=stopper,
             optimizer=optimizer,
-            response_train=lsl.Var(jnp.asarray(train), name="response"),
-            response_validation=lsl.Var(jnp.asarray(validation), name="response"),
+            response_train=lsl.Var(jnp.asarray(train.T), name="response"),
+            response_validation=lsl.Var(jnp.asarray(validation.T), name="response"),
             locs=locs,
-            loc_batch_size=self.response.value.shape[1],
+            loc_batch_size=self.response.value.shape[0],
         )
 
         self.graph.state = result.model_state
@@ -223,10 +221,10 @@ class TransformationModel(Model):
             params=params + hyper_params,
             stopper=stopper,
             optimizer=optimizer,
-            response_train=lsl.Var(jnp.asarray(train), name="response"),
-            response_validation=lsl.Var(jnp.asarray(validation), name="response"),
+            response_train=lsl.Var(jnp.asarray(train.T), name="response"),
+            response_validation=lsl.Var(jnp.asarray(validation.T), name="response"),
             locs=locs,
-            loc_batch_size=self.response.value.shape[1],
+            loc_batch_size=self.response.value.shape[0],
         )
 
         self.graph.state = result.model_state
@@ -268,7 +266,7 @@ class TransformationModel(Model):
             locs = jnp.asarray(locs)
 
         n_loc = locs.shape[0]
-        n_loc_model = self.response.value.shape[1]
+        n_loc_model = self.response.value.shape[0]
 
         def _generate_batch_indices(n: int, batch_size: int) -> Array:
             n_full_batches = n // batch_size
@@ -302,8 +300,8 @@ class TransformationModel(Model):
 
             dist = self.dist_class(coef=coef.value, **parametric_distribution_values)
             transformation_and_logdet_fn = getattr(dist, which)
-            z, logdet = transformation_and_logdet_fn(y)
-            return z, logdet
+            z, logdet = transformation_and_logdet_fn(y.T)
+            return z.T, logdet.T
 
         z = jnp.empty_like(y)
         z_logdet = jnp.empty_like(y)
@@ -341,10 +339,10 @@ class TransformationModel(Model):
                 **parametric_distributionargs_last_batch,
             )
             transformation_and_logdet_fn = getattr(dist, which)
-            z_i, z_logdet_i = transformation_and_logdet_fn(y_last_batch)
+            z_i, z_logdet_i = transformation_and_logdet_fn(y_last_batch.T)
 
-            z = z.at[:, last_batch_indices].set(z_i)
-            z_logdet = z_logdet.at[:, last_batch_indices].set(z_logdet_i)
+            z = z.at[:, last_batch_indices].set(z_i.T)
+            z_logdet = z_logdet.at[:, last_batch_indices].set(z_logdet_i.T)
 
         return z, z_logdet
 
@@ -378,7 +376,7 @@ class TransformationModel(Model):
             locs = jnp.asarray(locs)
 
         n_loc = locs.shape[0]
-        n_loc_model = self.response.value.shape[1]
+        n_loc_model = self.response.value.shape[0]
 
         def _generate_batch_indices(n: int, batch_size: int) -> Array:
             n_full_batches = n // batch_size
@@ -416,9 +414,9 @@ class TransformationModel(Model):
 
             inverse_transformation_fn = getattr(dist, which)
 
-            y = inverse_transformation_fn(z)
+            y = inverse_transformation_fn(z.T)
 
-            return y
+            return y.T
 
         y = jnp.empty_like(z)
         init_val = (z, locs, batch_indices, y)
@@ -450,8 +448,8 @@ class TransformationModel(Model):
                 **parametric_distributionargs_last_batch,
             )
             inverse_transformation_fn = getattr(dist, which)
-            y_i = inverse_transformation_fn(z_last_batch)
-            y = y.at[:, last_batch_indices].set(y_i)
+            y_i = inverse_transformation_fn(z_last_batch.T)
+            y = y.at[:, last_batch_indices].set(y_i.T)
 
         return y
 
@@ -476,10 +474,8 @@ class LocScaleTransformationModel(TransformationModel):
         self.loc = loc
         self.scale = scale
 
-        bspline = BSpline(
-            knots=knots, order=3, target_slope_left=1.0, target_slope_right=1.0
-        )
-        self.fn = bspline.dot_and_deriv
+        bspline = ExtrapBSplineApprox(knots=knots, order=3)
+        self.fn = bspline.get_extrap_basis_dot_and_deriv_fn(target_slope=1.0)
         self.parametric_distribution = tfd.Normal
 
         self.dist_class = partial(
@@ -493,7 +489,7 @@ class LocScaleTransformationModel(TransformationModel):
             coef=coef,
             **self.parametric_distribution_kwargs,
         )
-        self.response = lsl.obs(y, response_dist, name="response").update()
+        self.response = lsl.obs(y.T, response_dist, name="response").update()
         """Response variable."""
 
         self._to_float32 = to_float32
@@ -558,10 +554,10 @@ class CustomTransformationModel(TransformationModel):
             params=params + hyper_params,
             stopper=stopper,
             optimizer=optimizer,
-            response_train=lsl.Var(jnp.asarray(train), name="response"),
-            response_validation=lsl.Var(jnp.asarray(validation), name="response"),
+            response_train=lsl.Var(jnp.asarray(train.T), name="response"),
+            response_validation=lsl.Var(jnp.asarray(validation.T), name="response"),
             locs=locs,
-            loc_batch_size=self.response.value.shape[1],
+            loc_batch_size=self.response.value.shape[0],
         )
 
         self.graph.state = result.model_state

@@ -133,7 +133,7 @@ class TestTransformationModel:
         model = TransformationModel(y[:, :10], knots=knots.knots, coef=coef)
 
         assert not jnp.any(jnp.isinf(model.response.value))
-        assert model.response.value.shape == (20, 10)
+        assert model.response.value.T.shape == (20, 10)
 
     def test_with_simple_transformation(self):
         y = jrd.normal(key, shape=(20, 50))
@@ -143,7 +143,7 @@ class TestTransformationModel:
         model = TransformationModel(y, knots=knots.knots, coef=coef)
 
         assert not jnp.any(jnp.isinf(model.response.value))
-        assert model.response.value.shape == y.shape
+        assert model.response.value.T.shape == y.shape
 
         assert model.param_names()[0] == coef.parameter_names[0]
 
@@ -162,8 +162,7 @@ class TestTransformationModel:
         )
 
         model = TransformationModel(y[:, :10], knots=knots.knots, coef=coef)
-        with jax.disable_jit(disable=False):
-            model.transformation_and_logdet(y, locs=locs)
+        model.transformation_and_logdet(y, locs=locs)
 
     def test_transformation_inverse(self):
         y = jrd.normal(key, shape=(20, 52))
