@@ -10,7 +10,7 @@ import liesel_ptm as ptm
 import optax
 import tensorflow_probability.substrates.jax.distributions as tfd
 from liesel.goose.optim import OptimResult, optim_flat
-from liesel_ptm.bsplines import ExtrapBSplineApprox
+from liesel_ptm.bsplines import BSpline
 from liesel_ptm.dist import LocScaleTransformationDist, TransformationDist
 
 from .node import (
@@ -125,8 +125,8 @@ class TransformationModel(Model):
         self.coef = coef
         self.parametric_distribution_kwargs = parametric_distribution_kwargs
 
-        bspline = ExtrapBSplineApprox(knots=knots, order=3)
-        self.fn = bspline.get_extrap_basis_dot_and_deriv_fn(target_slope=1.0)
+        bspline = BSpline(knots=knots, order=3, target_slope_left=1.0, target_slope_right=1.0, subscripts="dot")
+        self.fn = bspline.dot_and_deriv
         self.parametric_distribution = parametric_distribution
 
         self.dist_class = partial(
@@ -134,6 +134,7 @@ class TransformationModel(Model):
             knots=knots,
             basis_dot_and_deriv_fn=self.fn,
             parametric_distribution=self.parametric_distribution,
+            rowwise_dot=False
         )
 
         response_dist = lsl.Dist(
@@ -474,14 +475,15 @@ class LocScaleTransformationModel(TransformationModel):
         self.loc = loc
         self.scale = scale
 
-        bspline = ExtrapBSplineApprox(knots=knots, order=3)
-        self.fn = bspline.get_extrap_basis_dot_and_deriv_fn(target_slope=1.0)
+        bspline = BSpline(knots=knots, order=3, target_slope_left=1.0, target_slope_right=1.0, subscripts="dot")
+        self.fn = bspline.dot_and_deriv
         self.parametric_distribution = tfd.Normal
 
         self.dist_class = partial(
             LocScaleTransformationDist,
             knots=knots,
             basis_dot_and_deriv_fn=self.fn,
+            rowwise_dot=False
         )
 
         response_dist = lsl.Dist(
