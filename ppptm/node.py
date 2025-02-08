@@ -202,7 +202,7 @@ class ParamPredictivePointProcessGP(lsl.Var):
         kernel_cls: type[tfk.AutoCompositeTensorPsdKernel],
         bijector: tfb.Bijector = tfb.Identity(),
         name: str = "",
-        expand_dims: bool = True,
+        expand_dims: bool = False,
         **kernel_params: lsl.Var | TransformedVar,
     ) -> None:
         kernel_uu = Kernel(
@@ -315,7 +315,7 @@ class GEVLocationPredictivePointProcessGP(lsl.Var):
         kernel_cls: type[tfk.AutoCompositeTensorPsdKernel],
         bijector: tfb.Bijector = tfb.Identity(),
         name: str = "",
-        expand_dims: bool = True,
+        expand_dims: bool = False,
         eps: float | Array = 0.5,
         clip: bool = True,
         **kernel_params: lsl.Var | TransformedVar,
