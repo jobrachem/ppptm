@@ -211,6 +211,8 @@ def optim_loc_batched(
     init_val["position"] = position
     init_val["opt_state"] = optimizer.init(position)
     init_val["key"] = jax.random.PRNGKey(batch_seed)
+    init_val["current_loss_train"] = history["loss_train"][0]
+    init_val["current_loss_validation"] = history["loss_validation"][0]
 
     # ---------------------------------------------------------------------------------
     # Define while loop body
@@ -225,9 +227,8 @@ def optim_loc_batched(
     )
 
     def tqdm_callback(val):
-        i = val["while_i"]
-        loss_train = val["history"]["loss_train"][i]
-        loss_validation = val["history"]["loss_validation"][i]
+        loss_train = val["current_loss_train"]
+        loss_validation = val["current_loss_validation"]
         desc = (
             f"Training loss: {loss_train:.3f}, Validation loss: {loss_validation:.3f}"
         )
@@ -274,6 +275,9 @@ def optim_loc_batched(
         val["history"]["loss_validation"] = (
             val["history"]["loss_validation"].at[val["while_i"]].set(loss_validation)
         )
+
+        val["current_loss_train"] = loss_train
+        val["current_loss_validation"] = loss_validation
 
         if save_position_history:
             pos_hist = val["history"]["position"]
