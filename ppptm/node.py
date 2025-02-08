@@ -500,6 +500,7 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
         D: int,
         kernel_cls: type[tfk.AutoCompositeTensorPsdKernel],
         name: str = "",
+        scale_u: lsl.Var | None = None,
         **kernel_params: lsl.Var | TransformedVar,
     ):
         kernel_uu = Kernel(
@@ -530,10 +531,14 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
 
         salt = jnp.eye(kernel_uu.value.shape[0]) * 1e-6
 
-        def _compute_param(latent_var, Kuu, Kdu):
+        self.scale_u = scale_u
+        if scale_u is None:
+            scale_u = lsl.Var(jnp.ones((n_inducing_locs, 1), dtype=kernel_uu.value.dtype))
+
+        def _compute_param(latent_var, Kuu, Kdu, scale_u):
             Li = jnp.linalg.inv(jnp.linalg.cholesky(Kuu + salt))
 
-            latent_mat = jnp.reshape(latent_var, shape=(n_inducing_locs, W.shape[1]))
+            latent_mat = scale_u * jnp.reshape(latent_var, shape=(n_inducing_locs, W.shape[1]))
 
             delta_mat = W @ (Kdu @ Li.T @ latent_mat).T
 
@@ -545,6 +550,7 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
                 latent_var=latent_var,
                 Kuu=kernel_uu,
                 Kdu=kernel_du,
+                scale_u=scale_u
             ),
             name=name,
         )
@@ -564,7 +570,17 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
 
     @property
     def hyperparameter_names(self):
-        return [find_param(param).name for param in self.kernel_params.values()]
+        names = []
+        for name, param in self.kernel_params.items():
+            if name == "amplitude" and self.scale_u is not None:
+                continue
+
+            names += [find_param(param).name]
+        
+        if self.scale_u is not None:
+            names += [find_param(self.scale_u).name]
+
+        return names
 
 
 class OnionCoefPredictivePointProcessGP(lsl.Var):

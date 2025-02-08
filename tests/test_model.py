@@ -18,6 +18,7 @@ from ppptm.node import (
     OnionCoefPredictivePointProcessGP,
     OnionKnots,
 )
+from liesel_ptm import TransformedVar
 
 key = jrd.PRNGKey(42)
 
@@ -373,3 +374,48 @@ class TestLocScaleTransformationModel:
 
         assert model.graph.vars["loc"].value == pytest.approx(true_loc, abs=0.1)
         assert model.graph.vars["scale"].value == pytest.approx(true_scale, abs=0.1)
+
+    def test_fit_loc_scale_varying_amplitude(self) -> None:
+        true_loc = 3.0
+        true_scale = 1.3
+        y = true_loc + true_scale * jrd.normal(key, shape=(90, 100))
+
+        locs = jrd.uniform(key, shape=(y.shape[1], 2))
+        knots = OnionKnots(-3.0, 3.0, nparam=12)
+        locs_var = lsl.Var(locs, name="locs")
+
+        amplitude_prior = lsl.Dist(
+            tfd.InverseGamma,
+            concentration=2.0, 
+            scale=1.0
+        )
+
+        coef = OnionCoefPredictivePointProcessGP.new_from_locs(
+            knots,
+            inducing_locs=lsl.Var(locs[:-50, :], name="inducing_locs"),
+            sample_locs=locs_var,
+            kernel_cls=tfk.ExponentiatedQuadratic,
+            # amplitude=TransformedVar(jnp.ones((50,1)), prior=amplitude_prior, name="amplitude"),
+            amplitude=lsl.param(1.0, name="amplitude"),
+            length_scale=lsl.param(1.0, name="length_scale"),
+            name="coef",
+        )
+
+        loc = ModelVar(0.0, name="loc")
+        scale = ModelVar(1.0, bijector=tfb.Softplus(), name="scale")
+
+        model = LocScaleTransformationModel(
+            y[:-50, :], knots=knots.knots, coef=coef, loc=loc, scale=scale
+        )
+
+        with jax.disable_jit(disable=False):
+            result = model.fit_loc_batched(
+                train=y,
+                validation=y,
+                locs=locs_var,
+                stopper=Stopper(max_iter=1000, patience=20),
+            )
+
+        model.graph.state = result.model_state
+        model.graph.update()
+
