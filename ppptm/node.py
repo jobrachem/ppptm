@@ -500,7 +500,7 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
         D: int,
         kernel_cls: type[tfk.AutoCompositeTensorPsdKernel],
         name: str = "",
-        scale_u: lsl.Var | None = None,
+        locwise_amplitude: lsl.Var | None = None,
         **kernel_params: lsl.Var | TransformedVar,
     ):
         kernel_uu = Kernel(
@@ -531,14 +531,16 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
 
         salt = jnp.eye(kernel_uu.value.shape[0]) * 1e-6
 
-        self.scale_u = scale_u
-        if scale_u is None:
-            scale_u = lsl.Var(jnp.ones((n_inducing_locs, 1), dtype=kernel_uu.value.dtype))
+        self.locwise_amplitude = locwise_amplitude
 
-        def _compute_param(latent_var, Kuu, Kdu, scale_u):
+        def _compute_param(latent_var, Kuu, Kdu, locwise_amplitude):
             Li = jnp.linalg.inv(jnp.linalg.cholesky(Kuu + salt))
 
-            latent_mat = scale_u * jnp.reshape(latent_var, shape=(n_inducing_locs, W.shape[1]))
+            if self.locwise_amplitude is not None:
+                # small constant added to safeguard against zero amplitudes
+                Li = Li * (1 / (locwise_amplitude[None, :] + 1e-6)) 
+
+            latent_mat = jnp.reshape(latent_var, shape=(n_inducing_locs, W.shape[1]))
 
             delta_mat = W @ (Kdu @ Li.T @ latent_mat).T
 
@@ -550,7 +552,7 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
                 latent_var=latent_var,
                 Kuu=kernel_uu,
                 Kdu=kernel_du,
-                scale_u=scale_u
+                locwise_amplitude=locwise_amplitude
             ),
             name=name,
         )
@@ -572,13 +574,13 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
     def hyperparameter_names(self):
         names = []
         for name, param in self.kernel_params.items():
-            if name == "amplitude" and self.scale_u is not None:
+            if name == "amplitude" and self.locwise_amplitude is not None:
                 continue
 
             names += [find_param(param).name]
         
-        if self.scale_u is not None:
-            names += [find_param(self.scale_u).name]
+        if self.locwise_amplitude is not None:
+            names += [find_param(self.locwise_amplitude).name]
 
         return names
 
@@ -610,6 +612,7 @@ class OnionCoefPredictivePointProcessGP(lsl.Var):
         inducing_locs: lsl.Var | lsl.Node,
         sample_locs: lsl.Var | lsl.Node,
         kernel_cls: type[tfk.AutoCompositeTensorPsdKernel],
+        locwise_amplitude: lsl.Var | None = None,
         name: str = "",
         **kernel_params: lsl.Var | TransformedVar,
     ) -> OnionCoefPredictivePointProcessGP:
@@ -621,6 +624,7 @@ class OnionCoefPredictivePointProcessGP(lsl.Var):
             D=knots.nparam + 1,
             kernel_cls=kernel_cls,
             name=f"{name}_log_increments",
+            locwise_amplitude=locwise_amplitude,
             **kernel_params,
         )
 
