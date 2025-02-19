@@ -23,6 +23,9 @@ jobs:
           r-version: "release"
           use-public-rspm: true
       
+      - name: Set R_HOME
+        run: echo "R_HOME=$(R RHOME)" >> $GITHUB_ENV
+      
       - name: Install scoringRules
         run: R -e "install.packages('scoringRules')"
 
