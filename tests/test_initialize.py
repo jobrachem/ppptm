@@ -7,7 +7,7 @@ from ppptm.initialize import spatially_smoothed_mean_and_var  # Adjust import as
 def test_spatially_smoothed_mean_and_var():
     # Generate simple test data
     np.random.seed(42)
-    y = np.array([[1, 2, 3], [4, 5, 6]]) 
+    y = np.array([[1, 2, 3], [4, 5, 6]])
     loc = np.array([[0, 0], [1, 1], [2, 2]])
     sub = np.array([[0.5, 0.5], [1.5, 1.5]])
 

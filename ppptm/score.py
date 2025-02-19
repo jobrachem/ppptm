@@ -1,6 +1,7 @@
+from typing import Literal
+
 import numpy as np
 from numpy.typing import ArrayLike
-from typing import Literal
 from rpy2 import robjects
 
 
@@ -44,7 +45,7 @@ def tw_mv_score(
     mu_n = mu.shape[0]
     sigma_n = sigma.shape[0]
 
-    if not len(set([y_n, dat_n, mu_n, sigma_n])) == 1:
+    if not len({y_n, dat_n, mu_n, sigma_n}) == 1:
         raise ValueError("All inputs must have the same leading dimension.")
 
     # Convert inputs to R objects
