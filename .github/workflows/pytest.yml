@@ -16,6 +16,15 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+      
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+          use-public-rspm: true
+      
+      - name: Install scoringRules
+        run: R -e "install.packages('scoringRules')"
 
       - name: Set up Python
         uses: actions/setup-python@v5
