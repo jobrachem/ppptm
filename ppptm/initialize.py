@@ -7,7 +7,7 @@ def spatially_smoothed_mean_and_var(
     y: ArrayLike, loc: ArrayLike, sub: ArrayLike, bandwidth: float = 1.0
 ) -> tuple[ArrayLike, ArrayLike]:
     """
-    Compute spatially smoothed means and variances for locations in `sub` based on 
+    Compute spatially smoothed means and variances for locations in `sub` based on
     nearby `loc` points.
 
     Parameters:
@@ -20,6 +20,10 @@ def spatially_smoothed_mean_and_var(
     - smoothed_means: array of shape (nobs, nsub), smoothed means at `sub` locations
     - smoothed_vars: array of shape (nobs, nsub), smoothed variances at `sub` locations
     """
+    y = np.asarray(y)
+    loc = np.asarray(loc)
+    sub = np.asarray(sub)
+
     # Compute pairwise distances between each sub location and all loc points
     dists = cdist(sub, loc)  # Shape (nsub, nloc)
 
