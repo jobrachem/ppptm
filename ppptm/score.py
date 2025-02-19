@@ -86,7 +86,11 @@ def vectorized_tw_mv_score(
         - mu: (nloc,)
         - sigma: (nloc,)
     """
-    
-    fn = np.vectorize(tw_mv_score, excluded=["dat", "mu", "sigma", "scoring_rule"], signature="(1)->()")
-    
+
+    fn = np.vectorize(
+        tw_mv_score,
+        excluded=["dat", "mu", "sigma", "scoring_rule"],
+        signature="(1)->()",
+    )
+
     return fn(y, dat=dat, mu=mu, sigma=sigma, scoring_rule=scoring_rule).mean()
