@@ -3,6 +3,7 @@ import pytest
 
 from ppptm.score import tw_mv_score, vectorized_tw_mv_score
 
+
 @pytest.mark.skip(reason="Depends on R. Run manually")
 def test_tw_mv_score_es():
     y = np.array([0.5, 1.5, 2.5])
@@ -13,6 +14,7 @@ def test_tw_mv_score_es():
     result = tw_mv_score(y, dat.T, mu, sigma, scoring_rule="es")
 
     assert result == pytest.approx(1.534264)
+
 
 @pytest.mark.skip(reason="Depends on R. Run manually")
 def test_tw_mv_score_vs():
@@ -25,6 +27,7 @@ def test_tw_mv_score_vs():
 
     assert result == pytest.approx(4.037822)
 
+
 @pytest.mark.skip(reason="Depends on R. Run manually")
 def test_tw_mv_score_mmds():
     y = np.array([0.5, 1.5, 2.5])
@@ -35,6 +38,7 @@ def test_tw_mv_score_mmds():
     result = tw_mv_score(y, dat.T, mu, sigma, scoring_rule="mmds")
 
     assert result == pytest.approx(0.1942287)
+
 
 @pytest.mark.skip(reason="Depends on R. Run manually")
 def test_tw_mv_score_es_bigger():
@@ -49,6 +53,7 @@ def test_tw_mv_score_es_bigger():
     result2 = tw_mv_score(y, dat2.T, mu, sigma, scoring_rule="es")
 
     assert result1 < result2
+
 
 @pytest.mark.skip(reason="Depends on R. Run manually")
 def test_tw_mv_score_vectorized():
