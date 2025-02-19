@@ -9,7 +9,7 @@ def test_tw_mv_score_es():
     mu = np.array([1.0, 1.0, 1.0])
     sigma = np.array([0.5, 0.5, 0.5])
 
-    result = tw_mv_score(y, dat, mu, sigma, scoring_rule="es")
+    result = tw_mv_score(y, dat.T, mu, sigma, scoring_rule="es")
 
     assert result == pytest.approx(1.534264)
 
@@ -19,7 +19,7 @@ def test_tw_mv_score_vs():
     mu = np.array([1.0, 1.0, 1.0])
     sigma = np.array([0.5, 0.5, 0.5])
 
-    result = tw_mv_score(y, dat, mu, sigma, scoring_rule="vs")
+    result = tw_mv_score(y, dat.T, mu, sigma, scoring_rule="vs")
 
     assert result == pytest.approx(4.037822)
 
@@ -29,7 +29,7 @@ def test_tw_mv_score_mmds():
     mu = np.array([1.0, 1.0, 1.0])
     sigma = np.array([0.5, 0.5, 0.5])
 
-    result = tw_mv_score(y, dat, mu, sigma, scoring_rule="mmds")
+    result = tw_mv_score(y, dat.T, mu, sigma, scoring_rule="mmds")
 
     assert result == pytest.approx(0.1942287)
 
@@ -39,10 +39,10 @@ def test_tw_mv_score_es_bigger():
     sigma = np.full_like(mu, fill_value=1.0)
     
     dat1 = np.random.normal(loc=0.0, scale=1.0, size=(100,5))
-    result1 = tw_mv_score(y, dat1, mu, sigma, scoring_rule="es")
+    result1 = tw_mv_score(y, dat1.T, mu, sigma, scoring_rule="es")
 
     dat2 = np.random.normal(loc=-1.0, scale=1.0, size=(100,5))
-    result2 = tw_mv_score(y, dat2, mu, sigma, scoring_rule="es")
+    result2 = tw_mv_score(y, dat2.T, mu, sigma, scoring_rule="es")
 
     assert result1 < result2
 
