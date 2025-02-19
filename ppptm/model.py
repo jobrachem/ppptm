@@ -125,7 +125,13 @@ class TransformationModel(Model):
         self.coef = coef
         self.parametric_distribution_kwargs = parametric_distribution_kwargs
 
-        bspline = BSpline(knots=knots, order=3, target_slope_left=1.0, target_slope_right=1.0, subscripts="dot")
+        bspline = BSpline(
+            knots=knots,
+            order=3,
+            target_slope_left=1.0,
+            target_slope_right=1.0,
+            subscripts="dot",
+        )
         self.fn = bspline.dot_and_deriv
         self.parametric_distribution = parametric_distribution
 
@@ -134,7 +140,7 @@ class TransformationModel(Model):
             knots=knots,
             basis_dot_and_deriv_fn=self.fn,
             parametric_distribution=self.parametric_distribution,
-            rowwise_dot=False
+            rowwise_dot=False,
         )
 
         response_dist = lsl.Dist(
@@ -475,7 +481,13 @@ class LocScaleTransformationModel(TransformationModel):
         self.loc = loc
         self.scale = scale
 
-        bspline = BSpline(knots=knots, order=3, target_slope_left=1.0, target_slope_right=1.0, subscripts="dot")
+        bspline = BSpline(
+            knots=knots,
+            order=3,
+            target_slope_left=1.0,
+            target_slope_right=1.0,
+            subscripts="dot",
+        )
         self.fn = bspline.dot_and_deriv
         self.parametric_distribution = tfd.Normal
 
@@ -483,7 +495,7 @@ class LocScaleTransformationModel(TransformationModel):
             LocScaleTransformationDist,
             knots=knots,
             basis_dot_and_deriv_fn=self.fn,
-            rowwise_dot=False
+            rowwise_dot=False,
         )
 
         response_dist = lsl.Dist(
