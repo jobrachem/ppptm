@@ -9,6 +9,7 @@ import tensorflow_probability.substrates.jax.bijectors as tfb
 import tensorflow_probability.substrates.jax.distributions as tfd
 import tensorflow_probability.substrates.jax.math.psd_kernels as tfk
 from liesel.goose.optim import Stopper
+from liesel_ptm import TransformedVar
 
 from ppptm.model import LocScaleTransformationModel, Model, TransformationModel
 from ppptm.node import (
@@ -18,7 +19,6 @@ from ppptm.node import (
     OnionCoefPredictivePointProcessGP,
     OnionKnots,
 )
-from liesel_ptm import TransformedVar
 
 key = jrd.PRNGKey(42)
 
@@ -383,18 +383,16 @@ class TestLocScaleTransformationModel:
         knots = OnionKnots(-3.0, 3.0, nparam=12)
         locs_var = lsl.Var(locs, name="locs")
 
-        amplitude_prior = lsl.Dist(
-            tfd.InverseGamma,
-            concentration=2.0, 
-            scale=1.0
-        )
+        amplitude_prior = lsl.Dist(tfd.InverseGamma, concentration=2.0, scale=1.0)
 
         coef = OnionCoefPredictivePointProcessGP.new_from_locs(
             knots,
             inducing_locs=lsl.Var(locs[:-50, :], name="inducing_locs"),
             sample_locs=locs_var,
             kernel_cls=tfk.ExponentiatedQuadratic,
-            # amplitude=TransformedVar(jnp.ones((50,1)), prior=amplitude_prior, name="amplitude"),
+            locwise_amplitude=TransformedVar(
+                jnp.ones((50,)), prior=amplitude_prior, name="amplitude_locwise"
+            ),
             amplitude=lsl.param(1.0, name="amplitude"),
             length_scale=lsl.param(1.0, name="length_scale"),
             name="coef",
@@ -418,3 +416,6 @@ class TestLocScaleTransformationModel:
         model.graph.state = result.model_state
         model.graph.update()
 
+        assert result.position["amplitude_locwise_transformed"].shape == (50,)
+        assert jnp.isnan(result.position["amplitude_locwise_transformed"]).sum() == 0
+        assert ~jnp.isnan(result.history["loss_train"][-1])
