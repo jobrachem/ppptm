@@ -538,7 +538,7 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
 
             if self.locwise_amplitude is not None:
                 # small constant added to safeguard against zero amplitudes
-                Li = Li * (1 / (locwise_amplitude[None, :] + 1e-6)) 
+                Li = Li * (1 / (locwise_amplitude[None, :] + 1e-6))
 
             latent_mat = jnp.reshape(latent_var, shape=(n_inducing_locs, W.shape[1]))
 
@@ -552,7 +552,7 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
                 latent_var=latent_var,
                 Kuu=kernel_uu,
                 Kdu=kernel_du,
-                locwise_amplitude=locwise_amplitude
+                locwise_amplitude=locwise_amplitude,
             ),
             name=name,
         )
@@ -578,7 +578,7 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
                 continue
 
             names += [find_param(param).name]
-        
+
         if self.locwise_amplitude is not None:
             names += [find_param(self.locwise_amplitude).name]
 
