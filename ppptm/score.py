@@ -2,7 +2,11 @@ from typing import Literal
 
 import numpy as np
 from numpy.typing import ArrayLike
-from rpy2 import robjects
+
+try:
+    from rpy2 import robjects
+except ImportError:
+    pass
 
 
 def tw_mv_score(
