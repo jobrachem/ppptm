@@ -208,6 +208,39 @@ class TransformationModel(Model):
         self.graph.update()
 
         return result
+    
+    def fit_all_loc_batched(
+        self,
+        train: Array,
+        validation: Array,
+        locs: lsl.Var,
+        optimizer: optax.GradientTransformation | None = None,
+        stopper: ptm.Stopper | None = None,
+    ) -> OptimResult:
+        params: list[str] = []
+        hyper_params: list[str] = []
+        for var_ in self.parametric_distribution_kwargs.values():
+            params += var_.parameter_names
+            hyper_params += var_.hyperparameter_names
+        
+        params += self.coef.parameter_names
+        hyper_params += self.coef.hyperparameter_names
+
+        result = optim_loc_batched(
+            model=self.graph,
+            params=params + hyper_params,
+            stopper=stopper,
+            optimizer=optimizer,
+            response_train=lsl.Var(jnp.asarray(train.T), name="response"),
+            response_validation=lsl.Var(jnp.asarray(validation.T), name="response"),
+            locs=locs,
+            loc_batch_size=self.response.value.shape[0],
+        )
+
+        self.graph.state = result.model_state
+        self.graph.update()
+
+        return result
 
     def fit_parametric_distributionloc_batched(
         self,
