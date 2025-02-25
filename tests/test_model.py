@@ -333,6 +333,34 @@ class TestLocScaleTransformationModel:
         )
 
         assert model is not None
+    
+    def test_init_array_loc(self) -> None:
+        y = jrd.normal(key, shape=(90, 100))
+        locs = jrd.uniform(key, shape=(y.shape[1], 2))
+
+        knots = OnionKnots(-3.0, 3.0, nparam=12)
+        locs_var = lsl.Var(locs, name="locs")
+
+        coef = OnionCoefPredictivePointProcessGP.new_from_locs(
+            knots,
+            inducing_locs=lsl.Var(locs[:10, :], name="inducing_locs"),
+            sample_locs=locs_var,
+            kernel_cls=tfk.ExponentiatedQuadratic,
+            amplitude=lsl.param(1.0, name="amplitude"),
+            length_scale=lsl.param(1.0, name="length_scale"),
+            name="coef",
+        )
+
+        coef_const = ModelConst(coef.value, name="coef")
+
+        loc = ModelVar(jnp.zeros((y.shape[1], 1)), name="loc")
+        scale = ModelVar(1.0, bijector=tfb.Softplus(), name="scale")
+
+        model = LocScaleTransformationModel(
+            y[:-10, :], knots=knots.knots, coef=coef_const, loc=loc, scale=scale
+        )
+
+        assert model is not None
 
     def test_fit_loc_scale(self) -> None:
         true_loc = 3.0
