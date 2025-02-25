@@ -244,7 +244,7 @@ class ParamPredictivePointProcessGP(lsl.Var):
             if expand_dims:
                 value = jnp.expand_dims(value, -1)
 
-            return bijector.forward(value + mean)
+            return jnp.expand_dims(bijector.forward(value + mean), -1)
 
         super().__init__(
             lsl.Calc(_compute_param, self.latent_var, kernel_uu, kernel_du, self.mean),
@@ -363,7 +363,7 @@ class GEVLocationPredictivePointProcessGP(lsl.Var):
             if expand_dims:
                 value = jnp.expand_dims(value, -1)
 
-            return bijector.forward(value + mean)
+            return jnp.expand_dims(bijector.forward(value + mean), -1)
 
         self.transformed = lsl.Calc(
             _compute_param, self.latent_var, kernel_uu, kernel_du, self.mean
