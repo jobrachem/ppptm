@@ -4,7 +4,9 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 try:
-    from rpy2 import robjects
+    import rpy2.robjects as robjects
+    from rpy2.robjects import default_converter
+    robjects.conversion.set_conversion(default_converter)
 except ImportError:
     pass
 
