@@ -5,7 +5,7 @@ from numpy.typing import ArrayLike
 
 try:
     import rpy2.robjects as robjects
-    from rpy2.robjects import default_converter
+    from rpy2.robjects import conversion, default_converter
     robjects.conversion.set_conversion(default_converter)
 except ImportError:
     pass
@@ -100,4 +100,7 @@ def vectorized_tw_mv_score(
         signature="(1)->()",
     )
 
-    return fn(y, dat=dat, mu=mu, sigma=sigma, scoring_rule=scoring_rule).mean()
+    with conversion.localconverter(default_converter):
+        out = fn(y, dat=dat, mu=mu, sigma=sigma, scoring_rule=scoring_rule).mean()
+    
+    return out
