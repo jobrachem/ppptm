@@ -34,8 +34,8 @@ def matrix_of_distances(x1, x2):
 
 class TestKernel:
     def test_2dloc(self):
-        amplitude = lsl.param(1.0)
-        length_scale = lsl.param(1.0)
+        amplitude = lsl.Var.new_param(1.0)
+        length_scale = lsl.Var.new_param(1.0)
 
         locs = lsl.Var(jrd.uniform(key, shape=(10, 2)))
 
@@ -57,8 +57,8 @@ class TestKernel:
         assert jnp.allclose(cov, kernel.value)
 
     def test_3dloc(self):
-        amplitude = lsl.param(1.0)
-        length_scale = lsl.param(1.0)
+        amplitude = lsl.Var.new_param(1.0)
+        length_scale = lsl.Var.new_param(1.0)
 
         locs = lsl.Var(jrd.uniform(key, shape=(10, 3)))
 
@@ -80,8 +80,8 @@ class TestKernel:
         assert jnp.allclose(cov, kernel.value)
 
     def test_2dloc_subset(self):
-        amplitude = lsl.param(1.0)
-        length_scale = lsl.param(1.0)
+        amplitude = lsl.Var.new_param(1.0)
+        length_scale = lsl.Var.new_param(1.0)
 
         locs = lsl.Var(jrd.uniform(key, shape=(10, 2)))
 
@@ -110,8 +110,8 @@ class TestKernel:
 
 class TestRandomWalkParamPredictivePointGP2:
     def test_init(self):
-        amplitude = lsl.param(1.0)
-        length_scale = lsl.param(1.0)
+        amplitude = lsl.Var.new_param(1.0)
+        length_scale = lsl.Var.new_param(1.0)
 
         locs = jrd.uniform(key, shape=(30, 2))
 
@@ -132,8 +132,8 @@ class TestRandomWalkParamPredictivePointGP2:
 
 class TestOnionCoefPredictivePointProcessGP:
     def test_init(self):
-        amplitude = lsl.param(1.0)
-        length_scale = lsl.param(1.0)
+        amplitude = lsl.Var.new_param(1.0)
+        length_scale = lsl.Var.new_param(1.0)
 
         locs = jrd.uniform(key, shape=(30, 2))
 
@@ -152,8 +152,8 @@ class TestOnionCoefPredictivePointProcessGP:
         assert param.value.shape == (30, knots.nparam + 6 + 1)
 
     def test_spawn_intercept(self):
-        amplitude = lsl.param(1.0)
-        length_scale = lsl.param(1.0)
+        amplitude = lsl.Var.new_param(1.0)
+        length_scale = lsl.Var.new_param(1.0)
 
         locs = jrd.uniform(key, shape=(30, 2))
 
@@ -174,8 +174,8 @@ class TestOnionCoefPredictivePointProcessGP:
         assert length_scale in list(intercept.kernel_params.values())
 
     def test_spawn_slope(self):
-        amplitude = lsl.param(1.0)
-        length_scale = lsl.param(1.0)
+        amplitude = lsl.Var.new_param(1.0)
+        length_scale = lsl.Var.new_param(1.0)
 
         locs = jrd.uniform(key, shape=(30, 2))
 
@@ -197,8 +197,8 @@ class TestOnionCoefPredictivePointProcessGP:
         assert jnp.all(slope.value > 0.0)
 
     def test_copy_for(self):
-        amplitude = lsl.param(1.0)
-        length_scale = lsl.param(1.0)
+        amplitude = lsl.Var.new_param(1.0)
+        length_scale = lsl.Var.new_param(1.0)
 
         locs = jrd.uniform(key, shape=(30, 2))
 
@@ -228,8 +228,8 @@ class TestOnionCoefPredictivePointProcessGP:
 
 class TestParamPredictivePointProcessGP:
     def test_copy_for(self):
-        amplitude = lsl.param(1.0)
-        length_scale = lsl.param(1.0)
+        amplitude = lsl.Var.new_param(1.0)
+        length_scale = lsl.Var.new_param(1.0)
 
         locs = jrd.uniform(key, shape=(30, 2))
 

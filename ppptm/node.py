@@ -155,7 +155,7 @@ class GEVLocation(lsl.Var):
 
             return value
 
-        self.transformed = lsl.param(value, name=f"{name}_unclipped")
+        self.transformed = lsl.Var.new_param(value, name=f"{name}_unclipped")
         calc = lsl.Calc(
             _clip, value=self.transformed, scale=scale, concentration=concentration
         )
@@ -223,7 +223,7 @@ class ParamPredictivePointProcessGP(lsl.Var):
 
         n_inducing_locs = kernel_uu.value.shape[0]
 
-        self.latent_var = lsl.param(
+        self.latent_var = lsl.Var.new_param(
             jnp.zeros((n_inducing_locs,)),
             distribution=lsl.Dist(tfd.Normal, loc=0.0, scale=1.0),
             name=f"{name}_latent",
@@ -232,7 +232,7 @@ class ParamPredictivePointProcessGP(lsl.Var):
         # a small value added to the diagonal of Kuu for numerical stability
         salt = jnp.diag(jnp.full(shape=(n_inducing_locs,), fill_value=1e-6))
 
-        self.mean = lsl.param(0.0, name=f"{name}_mean")
+        self.mean = lsl.Var.new_param(0.0, name=f"{name}_mean")
 
         def _compute_param(latent_var, Kuu, Kdu, mean):
             Kuu = Kuu + salt
@@ -342,7 +342,7 @@ class GEVLocationPredictivePointProcessGP(lsl.Var):
 
         n_inducing_locs = kernel_uu.value.shape[0]
 
-        self.latent_var = lsl.param(
+        self.latent_var = lsl.Var.new_param(
             jnp.zeros((n_inducing_locs,)),
             distribution=lsl.Dist(tfd.Normal, loc=0.0, scale=1.0),
             name=f"{name}_latent",
@@ -351,7 +351,7 @@ class GEVLocationPredictivePointProcessGP(lsl.Var):
         # a small value added to the diagonal of Kuu for numerical stability
         salt = jnp.diag(jnp.full(shape=(n_inducing_locs,), fill_value=1e-6))
 
-        self.mean = lsl.param(0.0, name=f"{name}_mean")
+        self.mean = lsl.Var.new_param(0.0, name=f"{name}_mean")
 
         def _compute_param(latent_var, Kuu, Kdu, mean):
             Kuu = Kuu + salt
@@ -523,7 +523,7 @@ class RandomWalkParamPredictivePointProcessGP(lsl.Var):
 
         n_inducing_locs = kernel_uu.value.shape[0]
 
-        latent_var = lsl.param(
+        latent_var = lsl.Var.new_param(
             jnp.zeros((n_inducing_locs * (W.shape[1]),)),
             distribution=lsl.Dist(tfd.Normal, loc=0.0, scale=1.0),
             name=f"{name}_latent",

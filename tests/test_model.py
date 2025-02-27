@@ -126,8 +126,8 @@ class TestTransformationModel:
             inducing_locs=lsl.Var(locs[:5, :]),
             sample_locs=lsl.Var(locs[:10, :]),
             kernel_cls=tfk.ExponentiatedQuadratic,
-            amplitude=lsl.param(1.0),
-            length_scale=lsl.param(1.0),
+            amplitude=lsl.Var.new_param(1.0),
+            length_scale=lsl.Var.new_param(1.0),
         )
 
         model = TransformationModel(y[:, :10], knots=knots.knots, coef=coef)
@@ -157,8 +157,8 @@ class TestTransformationModel:
             inducing_locs=lsl.Var(locs[:5, :]),
             sample_locs=lsl.Var(locs[:10, :]),
             kernel_cls=tfk.ExponentiatedQuadratic,
-            amplitude=lsl.param(1.0),
-            length_scale=lsl.param(1.0),
+            amplitude=lsl.Var.new_param(1.0),
+            length_scale=lsl.Var.new_param(1.0),
         )
 
         model = TransformationModel(y[:, :10], knots=knots.knots, coef=coef)
@@ -174,8 +174,8 @@ class TestTransformationModel:
             inducing_locs=lsl.Var(locs[:5, :]),
             sample_locs=lsl.Var(locs[:10, :]),
             kernel_cls=tfk.ExponentiatedQuadratic,
-            amplitude=lsl.param(1.0),
-            length_scale=lsl.param(1.0),
+            amplitude=lsl.Var.new_param(1.0),
+            length_scale=lsl.Var.new_param(1.0),
         )
 
         model = TransformationModel(y[:, :10], knots=knots.knots, coef=coef)
@@ -187,8 +187,8 @@ class TestTransformationModel:
             inducing_locs=lsl.Var(locs[:5, :]),
             sample_locs=lsl.Var(locs[:10, :]),
             kernel_cls=tfk.ExponentiatedQuadratic,
-            amplitude=lsl.param(1.0),
-            length_scale=lsl.param(1.0),
+            amplitude=lsl.Var.new_param(1.0),
+            length_scale=lsl.Var.new_param(1.0),
         )
         shape = coef.latent_coef.latent_var.value.shape
         coef.latent_coef.latent_var.value = jrd.normal(key, shape)
@@ -208,8 +208,8 @@ class TestTransformationModel:
             inducing_locs=lsl.Var(locs[:5, :]),
             sample_locs=lsl.Var(locs[:10, :]),
             kernel_cls=tfk.ExponentiatedQuadratic,
-            amplitude=lsl.param(1.0),
-            length_scale=lsl.param(1.0),
+            amplitude=lsl.Var.new_param(1.0),
+            length_scale=lsl.Var.new_param(1.0),
         )
 
         coef.latent_coef.latent_var.value = jrd.normal(
@@ -243,8 +243,8 @@ class TestTransformationModel:
             inducing_locs=lsl.Var(locs[:10, :], name="inducing_locs"),
             sample_locs=locs_var,
             kernel_cls=tfk.ExponentiatedQuadratic,
-            amplitude=lsl.param(1.0, name="amplitude"),
-            length_scale=lsl.param(1.0, name="length_scale"),
+            amplitude=lsl.Var.new_param(1.0, name="amplitude"),
+            length_scale=lsl.Var.new_param(1.0, name="length_scale"),
             name="coef",
         )
 
@@ -273,8 +273,8 @@ class TestTransformationModel:
             inducing_locs=lsl.Var(locs[:-50, :], name="inducing_locs"),
             sample_locs=locs_var,
             kernel_cls=tfk.ExponentiatedQuadratic,
-            amplitude=lsl.param(1.0, name="amplitude"),
-            length_scale=lsl.param(1.0, name="length_scale"),
+            amplitude=lsl.Var.new_param(1.0, name="amplitude"),
+            length_scale=lsl.Var.new_param(1.0, name="length_scale"),
             name="coef",
         )
 
@@ -318,8 +318,8 @@ class TestLocScaleTransformationModel:
             inducing_locs=lsl.Var(locs[:10, :], name="inducing_locs"),
             sample_locs=locs_var,
             kernel_cls=tfk.ExponentiatedQuadratic,
-            amplitude=lsl.param(1.0, name="amplitude"),
-            length_scale=lsl.param(1.0, name="length_scale"),
+            amplitude=lsl.Var.new_param(1.0, name="amplitude"),
+            length_scale=lsl.Var.new_param(1.0, name="length_scale"),
             name="coef",
         )
 
@@ -346,8 +346,8 @@ class TestLocScaleTransformationModel:
             inducing_locs=lsl.Var(locs[:10, :], name="inducing_locs"),
             sample_locs=locs_var,
             kernel_cls=tfk.ExponentiatedQuadratic,
-            amplitude=lsl.param(1.0, name="amplitude"),
-            length_scale=lsl.param(1.0, name="length_scale"),
+            amplitude=lsl.Var.new_param(1.0, name="amplitude"),
+            length_scale=lsl.Var.new_param(1.0, name="length_scale"),
             name="coef",
         )
 
@@ -376,8 +376,8 @@ class TestLocScaleTransformationModel:
             inducing_locs=lsl.Var(locs[:-50, :], name="inducing_locs"),
             sample_locs=locs_var,
             kernel_cls=tfk.ExponentiatedQuadratic,
-            amplitude=lsl.param(1.0, name="amplitude"),
-            length_scale=lsl.param(1.0, name="length_scale"),
+            amplitude=lsl.Var.new_param(1.0, name="amplitude"),
+            length_scale=lsl.Var.new_param(1.0, name="length_scale"),
             name="coef",
         )
 
@@ -421,8 +421,8 @@ class TestLocScaleTransformationModel:
             locwise_amplitude=TransformedVar(
                 jnp.ones((50,)), prior=amplitude_prior, name="amplitude_locwise"
             ),
-            amplitude=lsl.param(1.0, name="amplitude"),
-            length_scale=lsl.param(1.0, name="length_scale"),
+            amplitude=lsl.Var.new_param(1.0, name="amplitude"),
+            length_scale=lsl.Var.new_param(1.0, name="length_scale"),
             name="coef",
         )
 

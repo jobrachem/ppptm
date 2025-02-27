@@ -35,7 +35,7 @@ class Model:
         self.params = params
         self.tfp_dist_cls = tfp_dist_cls
 
-        self.response = lsl.obs(
+        self.response = lsl.Var.new_obs(
             y,
             lsl.Dist(
                 self.tfp_dist_cls,
@@ -148,7 +148,7 @@ class TransformationModel(Model):
             coef=coef,
             **parametric_distribution_kwargs,
         )
-        self.response = lsl.obs(y.T, response_dist, name="response").update()
+        self.response = lsl.Var.new_obs(y.T, response_dist, name="response").update()
         """Response variable."""
 
         self._to_float32 = to_float32
@@ -193,6 +193,23 @@ class TransformationModel(Model):
         optimizer: optax.GradientTransformation | None = None,
         stopper: ptm.Stopper | None = None,
     ) -> OptimResult:
+        """Kept for backwards compatibility."""
+        return self.fit_H(
+            train=train,
+            validation=validation,
+            locs=locs,
+            optimizer=optimizer,
+            stopper=stopper,
+        )
+
+    def fit_H(
+        self,
+        train: Array,
+        validation: Array,
+        locs: lsl.Var,
+        optimizer: optax.GradientTransformation | None = None,
+        stopper: ptm.Stopper | None = None,
+    ) -> OptimResult:
         result = optim_loc_batched(
             model=self.graph,
             params=self.coef.parameter_names + self.coef.hyperparameter_names,
@@ -208,8 +225,25 @@ class TransformationModel(Model):
         self.graph.update()
 
         return result
-    
+
     def fit_all_loc_batched(
+        self,
+        train: Array,
+        validation: Array,
+        locs: lsl.Var,
+        optimizer: optax.GradientTransformation | None = None,
+        stopper: ptm.Stopper | None = None,
+    ) -> OptimResult:
+        """Kept for backwards compatibility."""
+        return self.fit_G_and_H(
+            train=train,
+            validation=validation,
+            locs=locs,
+            optimizer=optimizer,
+            stopper=stopper
+        )
+
+    def fit_G_and_H(
         self,
         train: Array,
         validation: Array,
@@ -222,7 +256,7 @@ class TransformationModel(Model):
         for var_ in self.parametric_distribution_kwargs.values():
             params += var_.parameter_names
             hyper_params += var_.hyperparameter_names
-        
+
         params += self.coef.parameter_names
         hyper_params += self.coef.hyperparameter_names
 
@@ -243,6 +277,23 @@ class TransformationModel(Model):
         return result
 
     def fit_parametric_distributionloc_batched(
+        self,
+        train: Array,
+        validation: Array,
+        locs: lsl.Var,
+        optimizer: optax.GradientTransformation | None = None,
+        stopper: ptm.Stopper | None = None,
+    ) -> OptimResult:
+        """Kept for backwards compatibility."""
+        return self.fit_G(
+            train=train,
+            validation=validation,
+            locs=locs,
+            optimizer=optimizer,
+            stopper=stopper,
+        )
+
+    def fit_G(
         self,
         train: Array,
         validation: Array,
@@ -536,7 +587,7 @@ class LocScaleTransformationModel(TransformationModel):
             coef=coef,
             **self.parametric_distribution_kwargs,
         )
-        self.response = lsl.obs(y.T, response_dist, name="response").update()
+        self.response = lsl.Var.new_obs(y.T, response_dist, name="response").update()
         """Response variable."""
 
         self._to_float32 = to_float32
