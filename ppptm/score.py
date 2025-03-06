@@ -17,6 +17,7 @@ def tw_score(
     a: float,
     b: float,
     scoring_rule: Literal["crps"] = "crps",
+    weighting: Literal["ow", "tw"] = "tw"
 ) -> ArrayLike:
     """
     Evaluates a threshold-weighted scoring rule.
@@ -53,7 +54,7 @@ def tw_score(
     b_r = robjects.FloatVector(b)
 
     # Call the twes_sample function in R
-    result = robjects.r(f"scoringRules::tw{scoring_rule}_sample")(
+    result = robjects.r(f"scoringRules::{weighting}{scoring_rule}_sample")(
         y=y_r, dat=dat_r, a=a_r, b=b_r
     )
  
@@ -149,6 +150,7 @@ def vectorized_tw_score(
     a: float,
     b: float,
     scoring_rule: Literal["crps"] = "crps",
+    weighting: Literal["ow", "tw"] = "tw"
 ) -> ArrayLike:
     """
     Expected shapes:
@@ -160,11 +162,11 @@ def vectorized_tw_score(
 
     fn = np.vectorize(
         tw_score,
-        excluded=["dat", "a", "b", "scoring_rule"],
+        excluded=["dat", "a", "b", "scoring_rule", "weighting"],
         signature="(1)->()",
     )
 
     with conversion.localconverter(default_converter):
-        out = fn(y, dat=dat, a=a, b=b, scoring_rule=scoring_rule).mean()
+        out = fn(y, dat=dat, a=a, b=b, scoring_rule=scoring_rule, weighting=weighting).mean()
     
     return out
