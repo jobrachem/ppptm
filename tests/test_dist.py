@@ -5,7 +5,15 @@ import pytest
 import tensorflow_probability.substrates.jax as tfp
 from tensorflow_probability.substrates.jax import tf2jax as tf
 
-from ppptm.dist import CustomGEV
+from ppptm.dist import CustomGEV, CensoredTransformationDist, LocScaleCensoredTransformationDist
+
+
+import jax
+import jax.numpy as jnp
+import tensorflow_probability.substrates.jax.distributions as tfd
+from liesel_ptm import sample_shape
+from liesel_ptm.ptm import OnionCoef, OnionKnots
+from liesel_ptm.ptm.util import sample_simple_ptm
 
 tfd = tfp.distributions
 
@@ -128,3 +136,80 @@ def test_grad():
     for param in ["loc", "scale", "concentration"]:
         assert jnp.all(~jnp.isnan(lp_grad[param]))
         assert jnp.all(~jnp.isinf(lp_grad[param]))
+
+
+nobs = 100
+key = jax.random.PRNGKey(0)  # generate PRNG keys
+k1, k2, k3, k4 = jax.random.split(key=key, num=4)
+
+x = tfd.Uniform(low=-2.0, high=2.0).sample(nobs, seed=k3)  # draw x
+
+
+class TestLocScaleSurvivalTransformationDist:
+    def test___init__(self):
+        nshape = 10
+        shape = sample_shape(k1, nshape=nshape, scale=0.3).sample  # set shape vector
+        log_eps = sample_simple_ptm(
+            k2, shape=(nobs,), coef=shape, centered=True, scaled=True
+        )
+
+        knots = OnionKnots(a=-4.0, b=4.0, nparam=nshape)
+        coef = OnionCoef(knots=knots, name="").function(shape)
+
+        dist = LocScaleCensoredTransformationDist(
+            knots=knots.knots,
+            coef=jnp.expand_dims(coef, 0),
+            loc=jnp.zeros(1),
+            scale=jnp.ones(1),
+        )
+
+        # Create a single indicator for censored data
+        censoring_indicator = tfd.Bernoulli(probs=0.15).sample(nobs, seed=k2)
+        u_lower = tfd.Uniform(low=jnp.log(0.1), high=log_eps).sample(seed=key)
+
+        lower_bound = jnp.full_like(log_eps, jnp.nan)
+        upper_bound = jnp.full_like(log_eps, jnp.nan)
+
+        lower_bound = jnp.where(censoring_indicator == 1, u_lower, lower_bound)
+        log_eps_censored = jnp.where(censoring_indicator == 1, jnp.nan, log_eps)
+
+        log_eps_obs = jnp.concatenate(
+            [log_eps_censored[:, None], lower_bound[:, None], upper_bound[:, None]],
+            axis=1,
+        )
+
+        with jax.disable_jit():
+            dist.log_prob(log_eps_obs)
+
+    def test_log_prob(self):
+        nshape = 10
+        shape = sample_shape(k1, nshape=nshape, scale=0.3).sample  # set shape vector
+        log_eps = sample_simple_ptm(
+            k2, shape=(nobs,), coef=shape, centered=True, scaled=True
+        )
+
+        knots = OnionKnots(a=-4.0, b=4.0, nparam=nshape)
+        coef = OnionCoef(knots=knots, name="").function(shape)
+
+        dist = CensoredTransformationDist(
+            knots=knots.knots,
+            coef=jnp.expand_dims(coef, 0),
+        )
+
+        # Create a single indicator for censored data
+        censoring_indicator = tfd.Bernoulli(probs=0.15).sample(nobs, seed=k2)
+        u_lower = tfd.Uniform(low=jnp.log(0.1), high=log_eps).sample(seed=key)
+
+        lower_bound = jnp.full_like(log_eps, jnp.nan)
+        upper_bound = jnp.full_like(log_eps, jnp.nan)
+
+        lower_bound = jnp.where(censoring_indicator == 1, u_lower, lower_bound)
+        log_eps_censored = jnp.where(censoring_indicator == 1, jnp.nan, log_eps)
+
+        log_eps_obs = jnp.concatenate(
+            [log_eps_censored[:, None], lower_bound[:, None], upper_bound[:, None]],
+            axis=1,
+        )
+
+        with jax.disable_jit():
+            dist.log_prob(log_eps_obs)

@@ -12,6 +12,7 @@ import tensorflow_probability.substrates.jax.distributions as tfd
 from liesel.goose.optim import OptimResult, optim_flat
 from liesel_ptm.bsplines import BSpline
 from liesel_ptm.dist import LocScaleTransformationDist, TransformationDist
+from .dist import CensoredTransformationDist, LocScaleCensoredTransformationDist
 
 from .node import (
     ModelConst,
@@ -597,6 +598,110 @@ class LocScaleTransformationModel(TransformationModel):
             .build_model()
         )
 
+
+
+class CensoredTransformationModel(TransformationModel):
+    def __init__(
+        self,
+        y: Array,
+        knots: Array,
+        coef: OnionCoefPredictivePointProcessGP | ModelOnionCoef,
+        censoring_threshold: float,
+        parametric_distribution: type[tfd.Distribution] | None = None,
+        to_float32: bool = True,
+        **parametric_distribution_kwargs: (
+            ModelConst | ModelVar | ParamPredictivePointProcessGP
+        ),
+    ) -> None:
+        self.knots = knots
+        self.coef = coef
+        self.parametric_distribution_kwargs = parametric_distribution_kwargs
+
+        bspline = BSpline(
+            knots=knots,
+            order=3,
+            target_slope_left=1.0,
+            target_slope_right=1.0,
+            subscripts="dot",
+        )
+        self.fn = bspline.dot_and_deriv
+        self.parametric_distribution = parametric_distribution
+
+        self.dist_class = partial(
+            CensoredTransformationDist,
+            knots=knots,
+            basis_dot_and_deriv_fn=self.fn,
+            parametric_distribution=self.parametric_distribution,
+            rowwise_dot=False,
+            censoring_threshold=censoring_threshold
+        )
+
+        response_dist = lsl.Dist(
+            self.dist_class,
+            coef=coef,
+            **parametric_distribution_kwargs,
+        )
+        self.response = lsl.Var.new_obs(jnp.swapaxes(y, 0, 1), response_dist, name="response").update()
+        """Response variable."""
+
+        self._to_float32 = to_float32
+        gb = lsl.GraphBuilder(to_float32=to_float32).add(self.response)
+        self.graph = gb.build_model()
+
+
+class CensoredLocScaleTransformationModel(TransformationModel):
+    """
+    Dedicated :class:`.TransformationModel` for location-scale
+    """
+
+    def __init__(
+        self,
+        y: Array,
+        knots: Array,
+        coef: OnionCoefPredictivePointProcessGP | ModelOnionCoef,
+        censoring_threshold: float,
+        loc: ModelConst | ModelVar | ParamPredictivePointProcessGP,
+        scale: ModelConst | ModelVar | ParamPredictivePointProcessGP,
+        to_float32: bool = True,
+    ) -> None:
+        self.knots = knots
+        self.coef = coef
+        self.parametric_distribution_kwargs = {"loc": loc, "scale": scale}
+        self.loc = loc
+        self.scale = scale
+
+        bspline = BSpline(
+            knots=knots,
+            order=3,
+            target_slope_left=1.0,
+            target_slope_right=1.0,
+            subscripts="dot",
+        )
+        self.fn = bspline.dot_and_deriv
+        self.parametric_distribution = tfd.Normal
+
+        self.dist_class = partial(
+            LocScaleCensoredTransformationDist,
+            knots=knots,
+            basis_dot_and_deriv_fn=self.fn,
+            rowwise_dot=False,
+            censoring_threshold=censoring_threshold
+        )
+
+        response_dist = lsl.Dist(
+            self.dist_class,
+            coef=coef,
+            **self.parametric_distribution_kwargs,
+        )
+        self.response = lsl.Var.new_obs(jnp.swapaxes(y, 0, 1), response_dist, name="response").update()
+        """Response variable."""
+
+        self._to_float32 = to_float32
+        self.graph = (
+            lsl.GraphBuilder(to_float32=self._to_float32)
+            .add(self.response)
+            .build_model()
+        )
 
 class GEVTransformationModel(TransformationModel):
     def copy_for(

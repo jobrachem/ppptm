@@ -8,6 +8,8 @@ from .model import (
     GEVTransformationModel,
     LocScaleTransformationModel,
     TransformationModel,
+    CensoredTransformationModel,
+    CensoredLocScaleTransformationModel
 )
 from .node import (
     GEVLocation,
@@ -34,4 +36,6 @@ __all__ = [
     "ParamPredictivePointProcessGP",
     "CustomGEV",
     "CustomTransformationModel",
+    "CensoredTransformationModel",
+    "CensoredLocScaleTransformationModel"
 ]
