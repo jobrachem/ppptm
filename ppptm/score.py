@@ -144,6 +144,69 @@ def vectorized_tw_mv_score(
     
     return out
 
+
+def mv_score(
+    y: ArrayLike,
+    dat: ArrayLike,
+    scoring_rule: Literal["es", "vs", "mmds"] = "es",
+) -> ArrayLike:
+    """
+    Evaluates a threshold-weighted multivariate scoring rule with chaining function
+    based on the normal CDF.
+
+    Expected shapes:
+        - y: (nloc,)
+        - dat: (nsamples, nloc)
+    
+    """
+
+    y = np.asarray(y)
+    dat = np.asarray(dat).T
+
+    y_n = y.shape[0]
+    dat_n = dat.shape[0]
+
+    if not len({y_n, dat_n}) == 1:
+        raise ValueError("All inputs must have the same leading dimension.")
+
+    # Convert inputs to R objects
+    y_r = robjects.FloatVector(y)
+    robjects.vectors.Matrix()
+    dat_r = robjects.r["matrix"](
+        robjects.FloatVector(dat.flatten()),
+        nrow=dat.shape[0],
+        ncol=dat.shape[1],
+        byrow=True,
+    )
+
+    # Call the twes_sample function in R
+    result = robjects.r(f"scoringRules::{scoring_rule}_sample")(y=y_r, dat=dat_r)
+ 
+    return np.asarray(result).squeeze()
+
+
+def vectorized_mv_score(
+    y: ArrayLike,
+    dat: ArrayLike,
+    scoring_rule: Literal["es", "vs", "mmds"] = "es",
+) -> ArrayLike:
+    """
+    Expected shapes:
+        - y: (nsamples, nloc)
+        - dat: (nsamples, nloc)
+    """
+
+    fn = np.vectorize(
+        mv_score,
+        excluded=["dat", "scoring_rule"],
+        signature="(1)->()",
+    )
+
+    with conversion.localconverter(default_converter):
+        out = fn(y, dat=dat, scoring_rule=scoring_rule).mean()
+    
+    return out
+
 def vectorized_tw_score(
     y: ArrayLike,
     dat: ArrayLike,
