@@ -4,7 +4,7 @@ import pytest
 from ppptm.score import tw_mv_score, vectorized_tw_mv_score, vectorized_tw_score
 
 
-# @pytest.mark.skip(reason="Depends on R. Run manually")
+@pytest.mark.skip(reason="Depends on R. Run manually")
 def test_tw_mv_score_es():
     y = np.array([0.5, 1.5, 2.5])
     dat = np.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]])
@@ -78,6 +78,31 @@ def test_tw_score_vectorized():
 
     dat1 = np.random.normal(loc=0.0, scale=1.0, size=(5, 100))
     result1 = vectorized_tw_score(y, dat1, a, b, scoring_rule="crps")
+
+    dat2 = np.random.normal(loc=-1.0, scale=1.0, size=(5, 100))
+    result2 = vectorized_tw_score(y, dat2, a, b, scoring_rule="crps")
+
+    assert result1 < result2
+
+
+    a = 1.0
+    b = np.inf
+
+    dat1 = np.random.normal(loc=0.0, scale=1.0, size=(20, 100))
+    result1 = vectorized_tw_score(y, dat1, a, b, scoring_rule="crps")
+
+    dat2 = np.random.normal(loc=-1.0, scale=1.0, size=(20, 100))
+    result2 = vectorized_tw_score(y, dat2, a, b, scoring_rule="crps")
+
+    assert result1 < result2
+
+def test_ow_score_vectorized():
+    y = np.random.normal(loc=0.0, scale=1.0, size=(20, 100))
+    a = 3.0
+    b = np.inf
+
+    dat1 = np.random.normal(loc=0.0, scale=1.0, size=(5, 100))
+    result1 = vectorized_tw_score(y, dat1, a, b, scoring_rule="crps", weighting="ow")
 
     dat2 = np.random.normal(loc=-1.0, scale=1.0, size=(5, 100))
     result2 = vectorized_tw_score(y, dat2, a, b, scoring_rule="crps")

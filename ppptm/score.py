@@ -57,8 +57,8 @@ def tw_score(
     result = robjects.r(f"scoringRules::{weighting}{scoring_rule}_sample")(
         y=y_r, dat=dat_r, a=a_r, b=b_r
     )
- 
-    return np.asarray(result).squeeze().mean()
+    out = np.asarray(result).squeeze()
+    return out.mean(where=~np.isnan(out))
 
 
 def tw_mv_score(
@@ -203,7 +203,8 @@ def vectorized_mv_score(
     )
 
     with conversion.localconverter(default_converter):
-        out = fn(y, dat=dat, scoring_rule=scoring_rule).mean()
+        out = fn(y, dat=dat, scoring_rule=scoring_rule)
+        out = out.mean(where=~np.isnan(out))
     
     return out
 
@@ -230,6 +231,7 @@ def vectorized_tw_score(
     )
 
     with conversion.localconverter(default_converter):
-        out = fn(y, dat=dat, a=a, b=b, scoring_rule=scoring_rule, weighting=weighting).mean()
+        out = fn(y, dat=dat, a=a, b=b, scoring_rule=scoring_rule, weighting=weighting)
+        out = out.mean(where=~np.isnan(out))
     
     return out
