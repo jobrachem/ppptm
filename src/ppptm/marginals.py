@@ -38,7 +38,7 @@ class G:
         self.hyperparam_bijector = hyperparam_bijector
 
         self.min_dist = pdist(self.locs.ordered_subset.value, metric="euclidean").min()
-        self.amplitude_start = amplitude_start
+        self.amplitude_start = jnp.asarray(amplitude_start, dtype=jnp.ones(1).dtype)
 
     def new_length_scale(self, name: str) -> lsl.Var:
         val = (
@@ -172,20 +172,55 @@ class G:
         )
 
     def new_gamma(self, locwise: Sequence[str] = ("concentration", "rate")) -> lsl.Dist:
+        ymean = self.y.mean()
+        yvar = self.y.var()
+        concentration_init = ymean**2 / yvar
+        rate_init = ymean / yvar
+
         concentration = self.new_param(
             name="concentration",
             locwise="concentration" in locwise,
             bijector=tfb.Softplus(),
-            init_mean=jnp.std(self.y),
+            init_mean=concentration_init,
         )
         rate = self.new_param(
             name="rate",
             locwise="rate" in locwise,
             bijector=tfb.Softplus(),
-            init_mean=jnp.std(self.y),
+            init_mean=rate_init,
         )
 
         return lsl.Dist(tfd.Gamma, concentration=concentration, rate=rate)
+
+    def new_weibull(
+        self, locwise: Sequence[str] = ("concentration", "scale")
+    ) -> lsl.Dist:
+        eps = 1e-12  # to handle any zeros from rounding
+        y_pos = jnp.clip(self.y, eps, None)
+        logy = jnp.log(y_pos)
+
+        gamma = 0.5772156649015329  # Euler–Mascheroni constant
+        sy2 = logy.var(ddof=1) if logy.size > 1 else 0.0
+
+        concentration_init = jnp.pi / jnp.sqrt(6.0 * max(sy2, 1e-16))
+        concentration_init = jnp.clip(concentration_init, 1e-6, 1e6)
+
+        scale_init = jnp.exp(logy.mean() + gamma / concentration_init)
+
+        concentration = self.new_param(
+            name="concentration",
+            locwise="concentration" in locwise,
+            bijector=tfb.Softplus(),
+            init_mean=concentration_init,
+        )
+        scale = self.new_param(
+            name="scale",
+            locwise="scale" in locwise,
+            bijector=tfb.Softplus(),
+            init_mean=scale_init,
+        )
+
+        return lsl.Dist(tfd.Weibull, concentration=concentration, scale=scale)
 
 
 class H:
@@ -212,7 +247,7 @@ class H:
         self.nparam = nparam
         self.hyperparam_bijector = hyperparam_bijector
         self.min_dist = pdist(self.locs.ordered_subset.value, metric="euclidean").min()
-        self.amplitude_start = amplitude_start
+        self.amplitude_start = jnp.asarray(amplitude_start, dtype=jnp.ones(1).dtype)
 
     def new_length_scale(self, name: str) -> lsl.Var:
         val = (
