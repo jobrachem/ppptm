@@ -1,0 +1,96 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ppptm"
+# version is read dynamically from ppptm/__about__.py
+dynamic = ["version"]
+description = "Penalized Transformation Models with Predictive Point Process Gaussian Processes"
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.13"
+license = { file = "LICENSE.md" }
+authors = [{ name = "Johannes Brachem" }]
+keywords = ["statistics", "machine-learning"]
+urls = { Homepage = "https://github.com/jobrachem/ppptm" }
+
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Intended Audience :: Science/Research",
+]
+
+dependencies = [
+    "interpax>=0.3.10",
+    "liesel @ git+https://github.com/liesel-devs/liesel.git",
+    "veccs @ git+https://github.com/katzfuss-group/veccs.git@py-orderings",
+    "liesel_ptm @ git+https://github.com/liesel-devs/liesel-ptm.git",
+]
+
+[dependency-groups]
+r = [
+    "rpy2",
+]
+dev = [
+    "build",
+    "black",
+    "flake8",
+    "isort",
+    "mypy",
+    "pdoc",
+    "pre-commit",
+    "pytest",
+    "pytest-cov",
+    "pyupgrade",
+    "plotnine",
+    "ipykernel"
+]
+docs = [
+    "sphinx>=7.2.6",
+    "sphinx-autodoc-typehints>=2.0",
+    "sphinx-book-theme>=1.1.0",
+    "sphinx-copybutton>=0.5",
+    "sphinx-remove-toctrees>=0.0.3",
+    "myst-nb",
+]
+
+# Hatch configuration to pull the version from ppptm/__about__.py
+[tool.hatch.version]
+path = "src/ppptm/__about__.py"
+
+# If you need to include only specific packages (optional; hatch auto-discovers by default)
+# [tool.hatch.build.targets.wheel]
+# packages = ["ppptm"]
+
+[tool.isort]
+profile = "black"
+py_version = "3.13"
+
+[tool.flake8]
+# make flake8 compatible with black
+per-file-ignores = ["__init__.py:F401"]
+max-line-length = 90
+extend-ignore = ["E203"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:.*`product` is deprecated:DeprecationWarning",
+    "ignore:.*jax.core.Shape is deprecated:DeprecationWarning",
+    "ignore:.*Accessing jax.config via the jax.config submodule is deprecated:DeprecationWarning",
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.mypy]
+files = ["src/ppptm", "tests"]
+ignore_missing_imports = true
+scripts_are_modules = true
+disable_error_code = "annotation-unchecked"
+
+[tool.hatch.metadata]
+allow-direct-references = true
