@@ -24,6 +24,7 @@ classifiers = [
 dependencies = [
     "interpax>=0.3.10",
     "liesel @ git+https://github.com/liesel-devs/liesel.git",
+    "liesel_ptm @ git+https://github.com/liesel-devs/liesel-ptm.git",
     "batram @ git+https://github.com/jobrachem/batram.git@port-legmods-updates",
 ]
 
