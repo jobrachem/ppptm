@@ -28,6 +28,21 @@ class Locations:
     def nloc(self):
         return jnp.shape(self.unordered)[0]
 
+    @staticmethod
+    def from_2d_to_3d(lon: ArrayLike, lat: ArrayLike) -> Array:
+        lon = jnp.asarray(lon)
+        lat = jnp.asarray(lat)
+
+        lon_ = lon / 360 * 2 * jnp.pi
+        lat_ = lat / 360 * 2 * jnp.pi
+
+        loc1 = jnp.cos(lat_) * jnp.cos(lon_)
+        loc2 = jnp.cos(lat_) * jnp.sin(lon_)
+        loc3 = jnp.sin(lat_)
+
+        locs_3d = jnp.c_[loc1, loc2, loc3]
+        return locs_3d
+
 
 @dataclass
 class LocationVars:
@@ -44,9 +59,15 @@ class LocationVars:
         )
 
     @classmethod
-    def new_from(cls, unordered: ArrayLike, n_subset: int = -1) -> LocationVars:
+    def new_from(
+        cls, unordered: ArrayLike, n_subset: int = -1, from_2d_to_3d: bool = False
+    ) -> LocationVars:
         i = jnp.asarray(maxmin(np.asarray(unordered))[0])
         locs = Locations(unordered=unordered, ordering=i, n_subset=n_subset)
+        if from_2d_to_3d:
+            lon = locs.unordered[..., 0]
+            lat = locs.unordered[..., 1]
+            locs.unordered = locs.from_2d_to_3d(lon, lat)
         return cls(locs)
 
 
