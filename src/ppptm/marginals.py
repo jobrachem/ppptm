@@ -110,6 +110,7 @@ class G:
         bijector: tfb.Bijector = tfb.Identity(),
         init_mean: ArrayLike = jnp.array(0.0),
     ) -> ParamPredictiveProcessGP | lsl.Var:
+        init_mean = bijector.inverse(init_mean)
         if locwise:
             return self.new_param_locwise(name, bijector, init_mean)
         return self.new_param_const(name, bijector, init_mean, prior=None)
@@ -146,25 +147,47 @@ class G:
     def new_skewt(
         self, locwise: Sequence[str] = ("loc", "scale", "skewness")
     ) -> lsl.Dist:
-        loc = self.new_param("loc", "loc" in locwise, init_mean=jnp.mean(self.y))
+        med = jnp.median(self.y)
+        left = self.y[self.y < med]
+        right = self.y[self.y > med]
+
+        # MADs on each side; fall back to small eps if a side is empty or constant
+        def mad(z):
+            if z.size == 0:
+                return jnp.array(1e-7)
+            m = jnp.median(z)
+            return jnp.median(jnp.abs(z - m))
+
+        sL = 1.4826 * mad(left - med)
+        sR = 1.4826 * mad(right - med)
+
+        eps = jnp.array(1e-7)
+        skew = jnp.sqrt(jnp.clip(sR, min=eps) / jnp.clip(sL, min=eps))
+        skew_cap = (0.2, 0.5)
+        skew_init = jnp.clip(skew, skew_cap[0], skew_cap[1])
+        scale_init = jnp.sqrt(jnp.clip(sL * sR, min=eps))
+
+        loc = self.new_param("loc", "loc" in locwise, init_mean=med)
+
         scale = self.new_param(
             name="scale",
             locwise="scale" in locwise,
             bijector=tfb.Softplus(),
-            init_mean=jnp.std(self.y),
+            init_mean=scale_init,
         )
+
         skewness = self.new_param(
             name="skewness",
             locwise="skewness" in locwise,
             bijector=tfb.Softplus(),
-            init_mean=jnp.array(1.0),
+            init_mean=skew_init,
         )
 
         df = self.new_param(
             name="df",
             locwise="df" in locwise,
             bijector=tfb.Softplus(),
-            init_mean=jnp.array(30.0),
+            init_mean=jnp.array(10.0),
         )
 
         return lsl.Dist(
