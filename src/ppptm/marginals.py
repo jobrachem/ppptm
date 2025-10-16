@@ -110,8 +110,8 @@ class G:
         bijector: tfb.Bijector = tfb.Identity(),
         init_mean: ArrayLike = jnp.array(0.0),
     ) -> ParamPredictiveProcessGP | lsl.Var:
-        init_mean = bijector.inverse(init_mean)
         if locwise:
+            init_mean = bijector.inverse(init_mean)
             return self.new_param_locwise(name, bijector, init_mean)
         return self.new_param_const(name, bijector, init_mean, prior=None)
 
