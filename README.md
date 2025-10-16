@@ -8,18 +8,16 @@
 
 -----
 
-This readme is a default template. It is currently wrong.
-
-## Table of Contents
-
-- [Installation](#installation)
-- [License](#license)
-
 ## Installation
 
 ```console
-pip install ppptm
+pip install git+https://github.com/jobrachem/ppptm.git
 ```
+
+## Examples
+
+An extensive example is included in `tests/notebooks/test_prec_americas.ipynb`.
+The other notebooks contain tests of individual pieces of functionality.
 
 ## License
 
