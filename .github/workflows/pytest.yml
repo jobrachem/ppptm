@@ -4,31 +4,31 @@ on:
   push:
     branches: [main]
 
-concurrency:
-    group: gh-${{ github.ref }}-pytest
-    cancel-in-progress: true
-
 jobs:
   pytest:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+
+    strategy:
+      matrix:
+        python-version: ["3.13"]
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv and set the python version
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.10"
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-      - name: Install
-        run: |
-          pip install .[dev]
-          pip list
+      - name: Install Package
+        run: uv sync --locked --group dev
 
       - name: Run pytest
-        run: pytest --cov=ppptm
+        run: uv run pytest --cov=ppptm
 
       - name: Create coverage badge
         uses: tj-actions/coverage-badge-py@v2
@@ -40,6 +40,7 @@ jobs:
         run: |
           git config --local user.name "github-actions[bot]"
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git ls-remote | grep refs/heads/pytest-cov && git remote set-branches --add origin pytest-cov && git fetch
           git add tests/coverage.svg
           git diff --staged --quiet || git commit -m "Updated coverage.svg"
 
