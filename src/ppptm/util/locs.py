@@ -12,8 +12,8 @@ from veccs.orderings2 import farthest_first_ordering as maxmin
 
 @dataclass
 class Locations:
-    unordered: ArrayLike
-    ordering: ArrayLike
+    unordered: Array
+    ordering: Array
     n_subset: int = -1
 
     @property
@@ -60,7 +60,7 @@ class LocationVars:
 
     @classmethod
     def new_from(
-        cls, unordered: ArrayLike, n_subset: int = -1, from_2d_to_3d: bool = False
+        cls, unordered: Array, n_subset: int = -1, from_2d_to_3d: bool = False
     ) -> LocationVars:
         i = jnp.asarray(maxmin(np.asarray(unordered))[0])
         locs = Locations(unordered=unordered, ordering=i, n_subset=n_subset)

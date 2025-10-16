@@ -28,7 +28,7 @@ class G:
         hyperparam_bijector: tfb.Bijector = tfb.Softplus(),
         amplitude_start: Array = jnp.array(1.0),
     ):
-        self.y = y
+        self.y = jnp.asarray(y)
         self.locs = locs
         self.kernel = kernel
         self.ard = ard
@@ -318,7 +318,12 @@ class H:
                 d = self.amplitude_prior.distribution(**kwargs)
                 return tfd.TransformedDistribution(d, bij)
 
-            dist = lsl.Dist(distfn, **self.amplitude_prior.kwinputs)
+            dist = lsl.Dist(
+                distribution=distfn,
+                _name="",
+                _needs_seed=False,
+                **self.amplitude_prior.kwinputs,
+            )
             param.mean.dist_node = dist
         return param
 
