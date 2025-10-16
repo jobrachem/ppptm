@@ -21,8 +21,13 @@ class GPKernel(lsl.Var):
         x2: lsl.Var | lsl.Node | Array | None = None,
         name: str = "",
     ) -> None:
-        if length_scale.value.shape:
-            dummy = jnp.ones((1, length_scale.value.shape[-1]))
+        if isinstance(length_scale, lsl.Var | lsl.Node):
+            lsval = jnp.asarray(length_scale.value)
+        else:
+            lsval = jnp.asarray(length_scale)
+
+        if lsval.shape:
+            dummy = jnp.ones((1, lsval.shape[-1]))
         else:
             dummy = jnp.ones((1, 2))
         self.x1 = x1 if x1 is not None else lsl.Value(dummy)
