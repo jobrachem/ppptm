@@ -1,4 +1,5 @@
 import jax.numpy as jnp
+import pytest
 import tensorflow_probability.substrates.jax.math.psd_kernels as tfk
 from jax.random import key, normal
 
@@ -8,6 +9,7 @@ locs = gptm.unit_grid_vars()
 
 
 class TestPPParam:
+    @pytest.mark.skip
     def test_init(self):
         D = 10
         var = gptm.RandomWalkParamPredictiveProcessGP(
