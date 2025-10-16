@@ -42,7 +42,7 @@ class G:
 
     def new_length_scale(self, name: str) -> lsl.Var:
         val = (
-            jnp.array([self.min_dist, self.min_dist])
+            jnp.full((self.locs.ordered.value.shape[-1],), fill_value=self.min_dist)
             if self.ard
             else jnp.array(self.min_dist)
         )
@@ -274,7 +274,7 @@ class H:
 
     def new_length_scale(self, name: str) -> lsl.Var:
         val = (
-            jnp.array([self.min_dist, self.min_dist])
+            jnp.full((self.locs.ordered.value.shape[-1],), fill_value=self.min_dist)
             if self.ard
             else jnp.array(self.min_dist)
         )

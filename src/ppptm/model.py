@@ -146,6 +146,7 @@ class Model:
         self.knots = knots
         self.coef = coef
         self.g_dist = g_dist
+        self.locs = locs
 
         dist = HDist(
             knots=self.knots,
