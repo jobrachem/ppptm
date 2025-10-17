@@ -42,6 +42,7 @@ class CompositeTransformations:
         if fixed_y is None:
             fixed_zt = torch.tensor([])
         else:
+            fixed_y = jnp.asarray(fixed_y)
             # marginal model expects data at all locations, so we pad the missing ones
             fixed_size = fixed_y.size
             nloc = self.marginal.locs.locs.nloc
@@ -49,9 +50,9 @@ class CompositeTransformations:
 
             # marginal model excepts a leading axis
             fy = jnp.expand_dims(fixed_padded, 0)
-            fixed_zt = self.marginal.hg(fy)[:, :fixed_size]
+            fixed_zt_ = self.marginal.hg(fy)[:, :fixed_size]
             # turn into tensor and remove leading axis
-            fixed_zt = torch.as_tensor(np.asarray(fixed_zt).copy()).squeeze(0)
+            fixed_zt = torch.as_tensor(np.asarray(fixed_zt_).copy()).squeeze(0)
 
         with torch.no_grad():
             zt = self.dependence.inverse_map(
