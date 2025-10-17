@@ -1,4 +1,5 @@
 from .io import load_americas as load_americas
+from .joint_model import CompositeTransformations as CompositeTransformations
 from .marginals import G as G
 from .marginals import H as H
 from .model import Model as Model
@@ -18,45 +19,3 @@ from .util.summary import long_df as long_df
 from .util.summary import long_df_multiple as long_df_multiple
 from .util.summary import plot_df as plot_df
 from .util.summary import summary_at_2d_locs as summary_at_2d_locs
-
-# # SPDX-FileCopyrightText: 2024-present Johannes Brachem <jbrachem@posteo.de>
-# #
-# # SPDX-License-Identifier: MIT
-
-# from .dist import CustomGEV
-# from .model import (
-#     CustomTransformationModel,
-#     GEVTransformationModel,
-#     LocScaleTransformationModel,
-#     TransformationModel,
-#     CensoredTransformationModel,
-#     CensoredLocScaleTransformationModel,
-# )
-# from .node import (
-#     GEVLocation,
-#     GEVLocationPredictivePointProcessGP,
-#     Kernel,
-#     ModelConst,
-#     ModelOnionCoef,
-#     ModelVar,
-#     OnionCoefPredictivePointProcessGP,
-#     ParamPredictivePointProcessGP,
-# )
-
-# __all__ = [
-#     "GEVTransformationModel",
-#     "LocScaleTransformationModel",
-#     "TransformationModel",
-#     "GEVLocation",
-#     "GEVLocationPredictivePointProcessGP",
-#     "Kernel",
-#     "ModelConst",
-#     "ModelOnionCoef",
-#     "ModelVar",
-#     "OnionCoefPredictivePointProcessGP",
-#     "ParamPredictivePointProcessGP",
-#     "CustomGEV",
-#     "CustomTransformationModel",
-#     "CensoredTransformationModel",
-#     "CensoredLocScaleTransformationModel",
-# ]
