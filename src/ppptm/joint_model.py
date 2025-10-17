@@ -61,11 +61,14 @@ class CompositeTransformations:
             smooth=smooth,
             nug_mult=nug_mult,
         )
+        self.dependence = tm
 
         return tm
 
     def log_score(self, obs: ArrayLike, logdet_addition: ArrayLike = 0.0) -> jax.Array:
         obs = jnp.asarray(obs)
+        assert self.dependence is not None
+
         if self.use_marginal:
             mdist = self.marginal.init_dist()
             obs_hg, obs_hg_logdet = mdist.transformation_and_logdet(obs)
@@ -90,6 +93,8 @@ class CompositeTransformations:
         n: int,
         fixed_y: jax.typing.ArrayLike | None = None,
     ) -> jax.Array:
+        assert self.dependence is not None
+
         locs_model = self.locs
         z = jax.random.normal(key=key, shape=(n, locs_model.shape[0]))
 
