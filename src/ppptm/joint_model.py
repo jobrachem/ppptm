@@ -45,7 +45,7 @@ class CompositeTransformations:
             fixed_y = jnp.asarray(fixed_y)
             # marginal model expects data at all locations, so we pad the missing ones
             fixed_size = fixed_y.size
-            nloc = self.marginal.locs.locs.nloc
+            nloc = self.marginal.locs.ordered.value.shape[0]
             fixed_padded = jnp.zeros(nloc).at[:fixed_size].set(jnp.asarray(fixed_y))
 
             # marginal model excepts a leading axis
