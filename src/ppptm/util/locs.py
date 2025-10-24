@@ -52,9 +52,8 @@ class LocationVars:
         self.ordered = lsl.Var.new_value(
             jnp.asarray(self.locs.ordered), name="locs_ordered"
         )
-        self.ordered_subset = lsl.Var.new_calc(
-            lambda ordered: ordered[: self.locs.n_subset, ...],
-            ordered=self.ordered,
+        self.ordered_subset = lsl.Var.new_value(
+            value=self.ordered.value[: self.locs.n_subset, ...],
             name="locs_ordered_subset",
         )
 
