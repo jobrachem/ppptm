@@ -5,8 +5,8 @@ import ppptm as gptm
 
 locs = gptm.unit_grid_vars()
 nobs = 23
-
-y = normal(key(123), (nobs, locs.locs.nloc))
+nloc = locs.sample_locs.value.shape[0]
+y = normal(key(123), (nobs, nloc))
 
 
 class TestModel:

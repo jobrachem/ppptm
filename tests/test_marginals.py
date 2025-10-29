@@ -5,7 +5,8 @@ from jax.random import key, uniform
 import ppptm as gptm
 
 locs = gptm.unit_grid_vars()
-y = uniform(key(1), (23, locs.locs.nloc))
+nloc = locs.sample_locs.value.shape[0]
+y = uniform(key(1), (23, nloc))
 
 
 class TestG:
