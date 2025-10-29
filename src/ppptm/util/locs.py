@@ -14,7 +14,21 @@ from veccs.orderings2 import farthest_first_ordering as maxmin
 class Locations:
     unordered: Array
     ordering: Array
-    n_subset: int = -1
+    n_subset: int | None = None
+
+    def __post_init__(self):
+        if self.n_subset is None:
+            self.n_subset = self.unordered.shape[0]
+
+        if not self.n_subset >= 1:
+            raise ValueError(f"n_subset must be >= 1, got {self.n_subset}")
+
+    @classmethod
+    def new_from_unordered(
+        cls, unordered: Array, n_subset: int | None = None
+    ) -> Locations:
+        ordering = jnp.asarray(maxmin(np.asarray(unordered))[0])
+        return cls(unordered, ordering, n_subset)
 
     @property
     def ordered(self):
@@ -46,28 +60,65 @@ class Locations:
 
 @dataclass
 class LocationVars:
-    locs: Locations
+    ordered: lsl.Var
+    ordered_subset: lsl.Var
+    locs: Locations | None = None  # kept for backwards compatibility
 
     def __post_init__(self):
-        self.ordered = lsl.Var.new_value(
-            jnp.asarray(self.locs.ordered), name="locs_ordered"
+        self._validate_shape(self.ordered, self.ordered_subset)
+
+    @staticmethod
+    def _validate_shape(locs1: lsl.Var, locs2: lsl.Var):
+        shape_locs1 = locs1.value.shape
+        shape_locs2 = locs2.value.shape
+        if not shape_locs1[1:] == shape_locs2[1:]:
+            raise ValueError(
+                f"Shapes of locations are incompatible: {shape_locs1} and "
+                f"{shape_locs2}. All dimensions except the first one need to be equal."
+            )
+
+    @property
+    def inducing_locs(self) -> lsl.Var:
+        return self.ordered_subset
+
+    @inducing_locs.setter
+    def inducing_locs(self, value: lsl.Var):
+        self._validate_shape(self.ordered, value)
+        self.ordered_subset = value
+
+    @property
+    def sample_locs(self) -> lsl.Var:
+        return self.ordered
+
+    @sample_locs.setter
+    def sample_locs(self, value: lsl.Var):
+        self._validate_shape(value, self.ordered_subset)
+        self.ordered = value
+
+    @classmethod
+    def new_from_ordered(cls, locs: Locations) -> LocationVars:
+        ordered = lsl.Var.new_value(jnp.asarray(locs.ordered), name="sample_locs")
+        ordered_subset = lsl.Var.new_value(
+            value=ordered.value[: locs.n_subset, ...],
+            name="inducing_locs",
         )
-        self.ordered_subset = lsl.Var.new_value(
-            value=self.ordered.value[: self.locs.n_subset, ...],
-            name="locs_ordered_subset",
-        )
+        return cls(ordered, ordered_subset)
 
     @classmethod
     def new_from(
         cls, unordered: Array, n_subset: int = -1, from_2d_to_3d: bool = False
     ) -> LocationVars:
+        if from_2d_to_3d:
+            lon = unordered[..., 0]
+            lat = unordered[..., 1]
+            unordered = Locations.from_2d_to_3d(lon, lat)
+
         i = jnp.asarray(maxmin(np.asarray(unordered))[0])
         locs = Locations(unordered=unordered, ordering=i, n_subset=n_subset)
-        if from_2d_to_3d:
-            lon = locs.unordered[..., 0]
-            lat = locs.unordered[..., 1]
-            locs.unordered = locs.from_2d_to_3d(lon, lat)
-        return cls(locs)
+
+        ordered = lsl.Var.new_value(locs.ordered, name="sample_locs")
+        subset = lsl.Var.new_value(locs.ordered_subset, name="inducing_locs")
+        return cls(ordered, subset, locs=locs)
 
 
 def expand_grid(*arrays: ArrayLike) -> Array:
