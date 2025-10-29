@@ -102,7 +102,7 @@ class LocationVars:
             value=ordered.value[: locs.n_subset, ...],
             name="inducing_locs",
         )
-        return cls(ordered, ordered_subset)
+        return cls(ordered, ordered_subset, locs=locs)
 
     @classmethod
     def new_from(
@@ -133,13 +133,13 @@ def long_lat_grid(lon: ArrayLike, lat: ArrayLike, n_subset: int = -1) -> Locatio
     return Locations(unordered=locs, ordering=i, n_subset=n_subset)
 
 
-def unit_grid(ngrid: int = 10, n_subset: int = -1) -> Locations:
+def unit_grid(ngrid: int = 10, n_subset: int | None = None) -> Locations:
     lon = jnp.linspace(0.0, 1.0, ngrid)
     lat = jnp.linspace(0.0, 1.0, ngrid)
     return long_lat_grid(lon, lat, n_subset)
 
 
-def unit_grid_vars(ngrid: int = 10, n_subset: int = -1) -> LocationVars:
+def unit_grid_vars(ngrid: int = 10, n_subset: int | None = None) -> LocationVars:
     lon = jnp.linspace(0.0, 1.0, ngrid)
     lat = jnp.linspace(0.0, 1.0, ngrid)
-    return LocationVars(long_lat_grid(lon, lat, n_subset))
+    return LocationVars.new_from_ordered(long_lat_grid(lon, lat, n_subset))
