@@ -127,7 +127,9 @@ def expand_grid(*arrays: ArrayLike) -> Array:
     return stacked.reshape(-1, len(arrays))
 
 
-def long_lat_grid(lon: ArrayLike, lat: ArrayLike, n_subset: int = -1) -> Locations:
+def long_lat_grid(
+    lon: ArrayLike, lat: ArrayLike, n_subset: int | None = None
+) -> Locations:
     locs = expand_grid(lon, lat)
     i = jnp.asarray(maxmin(np.asarray(locs))[0])
     return Locations(unordered=locs, ordering=i, n_subset=n_subset)
