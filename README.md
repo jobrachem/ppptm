@@ -15,8 +15,11 @@ Brachem, J., Wiemann, P.F.V., & Katzfuss, M. (2026) Data-Efficient Generative Mo
 pip install git+https://github.com/jobrachem/ppptm.git
 ```
 
-## Application code
 
+## Application code and data
+
+
+- See https://github.com/jobrachem/ppptm/releases/tag/data for the data used in the applications.
 - `demos/americas.ipynb` contains code for the application to a subregion of the Americas.
 - `demos/global.ipynb` contains code for the application to the global dataset.
 
