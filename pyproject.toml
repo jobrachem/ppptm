@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "ppptm"
 # version is read dynamically from ppptm/__about__.py
 dynamic = ["version"]
-description = "Penalized Transformation Models with Predictive Point Process Gaussian Processes"
+description = "Penalized Transformation Models with Projected Process Gaussian Processes"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.13"
 license = { file = "LICENSE.md" }
@@ -26,6 +26,7 @@ dependencies = [
     "liesel @ git+https://github.com/liesel-devs/liesel.git",
     "liesel_ptm @ git+https://github.com/liesel-devs/liesel-ptm.git",
     "batram @ git+https://github.com/jobrachem/batram.git@port-legmods-updates",
+    "plotnine"
 ]
 
 [dependency-groups]
