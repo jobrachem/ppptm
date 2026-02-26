@@ -1,10 +1,13 @@
-# ppptm
+# Predictive-Process Penalized Transformation Models
 
 [![pre-commit](https://github.com/jobrachem/ppptm/actions/workflows/pre-commit.yml/badge.svg)](https://github.com/jobrachem/ppptm/actions/workflows/pre-commit.yml)
 [![pytest](https://github.com/jobrachem/ppptm/actions/workflows/pytest.yml/badge.svg)](https://github.com/jobrachem/ppptm/actions/workflows/pytest.yml)
 [![pytest-cov](tests/coverage.svg)](https://github.com/jobrachem/ppptm/actions/workflows/pytest.yml)
 
------
+This repository contains code and demonstration notebooks for applying the Scalable Composite Transformation models introduced in:
+
+Brachem, J., Wiemann, P.F.V., & Katzfuss, M. (2026) Data-Efficient Generative Modeling of Non-Gaussian Global Climate Fields via Scalable Composite Transformations. arXiv.
+
 
 ## Installation
 
@@ -12,10 +15,11 @@
 pip install git+https://github.com/jobrachem/ppptm.git
 ```
 
-## Examples
+## Application code
 
-An extensive example is included in `tests/notebooks/test_prec_americas.ipynb`.
-The other notebooks contain tests of individual pieces of functionality.
+- `demos/americas.ipynb` contains code for the application to a subregion of the Americas.
+- `demos/global.ipynb` contains code for the application to the global dataset.
+
 
 ## License
 
