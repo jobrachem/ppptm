@@ -8,7 +8,7 @@ name = "ppptm"
 dynamic = ["version"]
 description = "Penalized Transformation Models with Projected Process Gaussian Processes"
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.13"
+requires-python = "3.13"
 license = { file = "LICENSE.md" }
 authors = [{ name = "Johannes Brachem" }]
 keywords = ["statistics", "machine-learning"]
