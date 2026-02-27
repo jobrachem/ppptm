@@ -6,7 +6,7 @@
 
 This repository contains code and demonstration notebooks for applying the Scalable Composite Transformation models introduced in:
 
-Brachem, J., Wiemann, P.F.V., & Katzfuss, M. (2026) Data-Efficient Generative Modeling of Non-Gaussian Global Climate Fields via Scalable Composite Transformations.
+Brachem, J., Wiemann, P.F.V., & Katzfuss, M. (2026) Data-Efficient Generative Modeling of Non-Gaussian Global Climate Fields via Scalable Composite Transformations. arXiv. https://doi.org/10.48550/arXiv.2602.23311
 
 
 ## Installation
