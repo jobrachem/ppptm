@@ -23,8 +23,8 @@ classifiers = [
 
 dependencies = [
     "interpax>=0.3.10",
-    "liesel @ git+https://github.com/liesel-devs/liesel.git@optim-devel",
-    "liesel_ptm @ git+https://github.com/liesel-devs/liesel-ptm.git@develop",
+    "liesel @ git+https://github.com/liesel-devs/liesel.git@v0.5.1-dev2",
+    "liesel_ptm @ git+https://github.com/liesel-devs/liesel-ptm.git@v0.2.1-dev1",
     "batram @ git+https://github.com/katzfuss-group/batram.git",
     "plotnine"
 ]
