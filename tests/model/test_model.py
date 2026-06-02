@@ -1,6 +1,8 @@
 import jax.numpy as jnp
 import liesel.model as lsl
+import pytest
 from jax.random import key, normal
+from liesel import optim as loptim
 
 import ppptm as gptm
 
@@ -9,6 +11,18 @@ nobs = 23
 nloc = locs.sample_locs.value.shape[0]
 y = normal(key(123), (nobs, nloc))
 y_nan = y.at[0, 0].set(jnp.nan).at[2, 3].set(jnp.nan)
+
+fit_locs = gptm.unit_grid_vars(ngrid=4)
+fit_nloc = fit_locs.sample_locs.value.shape[0]
+fit_y = normal(key(321), (5, fit_nloc))
+fit_y_nan = fit_y.at[0, 0].set(jnp.nan).at[2, 3].set(jnp.nan)
+
+
+def assert_fit_result_is_finite(model, result):
+    assert result.best_position
+    for value in result.best_position.values():
+        assert jnp.all(jnp.isfinite(value))
+    assert not jnp.any(jnp.isnan(model.graph.log_prob))
 
 
 class TestModel:
@@ -182,3 +196,60 @@ class TestModel:
             == (1,) + model.g_dist["scale"].latent_var.value.shape
         )
         assert samples["response"].shape == (1,) + model.response.value.shape
+
+    def test_fit_gaussian_mask_nan_response_location_batching(self):
+        model = gptm.Model.new_G(
+            fit_y_nan, fit_locs, mask_nan_response=True
+        )
+        result = model.fit(
+            stopper=loptim.Stopper(epochs=1, patience=1),
+            batch_size=4,
+            seed=1,
+            save_position_history=False,
+        )
+
+        assert jnp.any(jnp.isnan(model.response.value))
+        assert_fit_result_is_finite(model, result)
+
+    def test_fit_hg_mask_nan_response_location_batching(self):
+        model = gptm.Model.new_HG(
+            fit_y_nan, fit_locs, nparam=12, mask_nan_response=True
+        )
+        result = model.fit(
+            stopper=loptim.Stopper(epochs=1, patience=1),
+            batch_size=4,
+            seed=2,
+            save_position_history=False,
+        )
+
+        assert jnp.any(jnp.isnan(model.response.value))
+        assert_fit_result_is_finite(model, result)
+
+    def test_fit_validation_uses_own_nan_mask_with_location_batching(self):
+        validation_y = normal(key(456), (3, fit_nloc))
+        validation_y = validation_y.at[1, 2].set(jnp.nan).at[2, 5].set(jnp.nan)
+        model = gptm.Model.new_HG(
+            fit_y_nan, fit_locs, nparam=12, mask_nan_response=True
+        )
+
+        result = model.fit(
+            stopper=loptim.Stopper(epochs=1, patience=1),
+            response_validation=validation_y,
+            batch_size=4,
+            seed=3,
+            save_position_history=False,
+        )
+
+        assert_fit_result_is_finite(model, result)
+        assert not jnp.any(jnp.isnan(result.history.loss_validate))
+
+    def test_fit_location_batch_size_must_divide_nloc(self):
+        model = gptm.Model.new_G(fit_y, fit_locs)
+
+        with pytest.raises(ValueError, match="must divide"):
+            model.fit(
+                stopper=loptim.Stopper(epochs=1, patience=1),
+                batch_size=5,
+                seed=1,
+                save_position_history=False,
+            )

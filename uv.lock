@@ -1045,8 +1045,8 @@ wheels = [
 
 [[package]]
 name = "liesel"
-version = "0.5.0"
-source = { git = "https://github.com/liesel-devs/liesel.git#0a692a4379758a03b127273b66e42b6a80b29644" }
+version = "0.5.1.dev1"
+source = { git = "https://github.com/liesel-devs/liesel.git?rev=optim-devel#7eafb2a645aa42709fd41ae3e6fdbfc562fab23d" }
 dependencies = [
     { name = "arviz" },
     { name = "blackjax" },
@@ -1058,6 +1058,7 @@ dependencies = [
     { name = "numpy" },
     { name = "optax" },
     { name = "pandas" },
+    { name = "plotnine" },
     { name = "pydot" },
     { name = "scipy" },
     { name = "seaborn" },
@@ -1812,7 +1813,7 @@ r = [
 requires-dist = [
     { name = "batram", git = "https://github.com/katzfuss-group/batram.git" },
     { name = "interpax", specifier = ">=0.3.10" },
-    { name = "liesel", git = "https://github.com/liesel-devs/liesel.git" },
+    { name = "liesel", git = "https://github.com/liesel-devs/liesel.git?rev=optim-devel" },
     { name = "liesel-ptm", git = "https://github.com/liesel-devs/liesel-ptm.git?rev=develop" },
     { name = "plotnine" },
 ]

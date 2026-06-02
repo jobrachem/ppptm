@@ -9,7 +9,9 @@ import optax
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax import Array
 from jax.typing import ArrayLike
-from liesel.goose import OptimResult, Stopper, optim_flat
+from liesel import optim as loptim
+from liesel.optim.state import OptimResult
+from liesel.optim.types import Position
 from liesel_ptm.dist import (
     LocScalePseudoTransformationDist,
     LocScaleTransformationDist,
@@ -29,6 +31,57 @@ PTMDist: TypeAlias = (
     | PseudoTransformationDist
     | LocScalePseudoTransformationDist
 )
+TrainMonitor: TypeAlias = Literal[
+    "auto", "epoch_average", "weighted_epoch_average", "full_data"
+]
+
+
+def _coerce_stopper(stopper: Any | None) -> loptim.Stopper:
+    if stopper is None:
+        return loptim.Stopper(epochs=1000, patience=10, rtol=1e-6)
+
+    if isinstance(stopper, loptim.Stopper):
+        return stopper
+
+    epochs = getattr(stopper, "epochs", None)
+    if epochs is None:
+        epochs = getattr(stopper, "max_iter", None)
+
+    patience = getattr(stopper, "patience", None)
+    if epochs is None or patience is None:
+        raise TypeError(
+            "stopper must be a liesel.optim.Stopper or expose max_iter/epochs "
+            "and patience attributes."
+        )
+
+    return loptim.Stopper(
+        epochs=int(epochs),
+        patience=int(patience),
+        atol=float(getattr(stopper, "atol", 0.0)),
+        rtol=float(getattr(stopper, "rtol", 0.0)),
+    )
+
+
+def _validate_location_batch_size(batch_size: int | None, nloc: int) -> None:
+    if batch_size is None:
+        return
+
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int):
+        raise ValueError("batch_size must be a positive integer or None.")
+
+    if batch_size < 1:
+        raise ValueError("batch_size must be a positive integer or None.")
+
+    if nloc % batch_size != 0:
+        raise ValueError(
+            "Location batch_size must divide the number of locations exactly; "
+            f"got batch_size={batch_size} and nloc={nloc}."
+        )
+
+
+def _validate_progress_n_updates(progress_n_updates: int) -> None:
+    if isinstance(progress_n_updates, bool) or progress_n_updates < 1:
+        raise ValueError("progress_n_updates must be a positive integer.")
 
 
 def _safe_mask_value(value: ArrayLike) -> Array:
@@ -285,33 +338,105 @@ class Model:
 
     def fit(
         self,
-        stopper: Stopper | None = None,
+        stopper: Any | None = None,
         response_validation: ArrayLike | None = None,
         optimizer: optax.GradientTransformation | None = None,
         progress_bar: bool = False,
-        **kwargs,
+        batch_size: int | None = None,
+        seed: int | None = None,
+        shuffle_batches: bool = True,
+        scale_loss: bool = False,
+        validation_strategy: Literal["log_lik", "log_prob"] = "log_lik",
+        train_monitor: TrainMonitor = "auto",
+        save_position_history: bool = True,
+        progress_n_updates: int = 100,
     ) -> OptimResult:
-        if response_validation is not None:
-            _, varval = self.graph.copy_nodes_and_vars()
-            varval["response"].value = jnp.asarray(response_validation)
-            model_validation = lsl.Model(
-                [varval["response"]], to_float32=self._to_float32
-            )
-        else:
-            model_validation = self.graph
+        _validate_location_batch_size(batch_size, self.nloc)
+        _validate_progress_n_updates(progress_n_updates)
 
-        result = optim_flat(
-            model_train=self.graph,
-            params=self.parameters,
-            model_validation=model_validation,
-            stopper=stopper,
-            progress_bar=progress_bar,
-            optimizer=optimizer,
-            **kwargs,
+        response_name = self.response.name
+        sample_locs = self.locs.sample_locs
+        sample_locs_name = sample_locs.name
+
+        train = {response_name: self.response.value}
+        axes = {response_name: 1}
+
+        if sample_locs_name in self.graph.vars:
+            train[sample_locs_name] = sample_locs.value
+            axes[sample_locs_name] = 0
+
+        if response_validation is not None:
+            response_validation = jnp.asarray(response_validation)
+            validation_shape = jnp.shape(response_validation)
+            if len(validation_shape) != 2:
+                raise ValueError(
+                    "response_validation must be a two-dimensional array with "
+                    "shape (nobs, nloc)."
+                )
+
+            nloc_validation = validation_shape[1]
+            if nloc_validation != self.nloc:
+                raise ValueError(
+                    "response_validation must have the same number of locations "
+                    f"as the training response; got {nloc_validation} and {self.nloc}."
+                )
+
+            validate = dict(train)
+            validate[response_name] = response_validation
+            n_validate = self.nloc
+        else:
+            validate = {}
+            n_validate = 0
+
+        split = loptim.PositionSplit(
+            train=Position(train),
+            validate=Position(validate),
+            test=Position({}),
+            n_train=self.nloc,
+            n_validate=n_validate,
+            n_test=0,
         )
+        batches = loptim.Batches(
+            position_keys=list(train),
+            n=self.nloc,
+            batch_size=batch_size,
+            axes=axes,
+            shuffle=shuffle_batches if batch_size is not None else False,
+        )
+        opt = loptim.Optimizer(
+            self.parameters,
+            optimizer=optimizer if optimizer is not None else optax.adam(1e-3),
+        )
+        optim = loptim.LieselOptim(
+            self.graph,
+            split=split,
+            batches=batches,
+            optimizers=[opt],
+            stopper=_coerce_stopper(stopper),
+            seed=seed,
+            validation_strategy=validation_strategy,
+            scale_loss=scale_loss,
+            train_monitor=train_monitor,
+        )
+        engine = optim.build_engine()
+        engine.show_progress = progress_bar
+        engine.save_position_history = save_position_history
+        engine.progress_n_updates = progress_n_updates
+
+        try:
+            result = engine.fit()
+        except (KeyError, TypeError, ValueError) as error:
+            if batch_size is None:
+                raise
+
+            raise ValueError(
+                "Location-batched Model.fit failed. This usually means that a "
+                "location-shaped model component is fixed at the full number of "
+                "locations instead of being scalar or derived from sample_locs."
+            ) from error
 
         self.fit_result = result
-        self.graph.state = self.graph.update_state(self.fit_result.position)
+        self.graph.state = self.graph.update_state(self.fit_result.best_position)
 
         return result
 
