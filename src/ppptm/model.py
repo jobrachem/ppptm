@@ -358,13 +358,9 @@ class Model:
         sample_locs = self.locs.sample_locs
         sample_locs_name = sample_locs.name
 
-        train = {response_name: self.response.value}
-        axes = {response_name: 1}
-
-        if sample_locs_name in self.graph.vars:
-            train[sample_locs_name] = sample_locs.value
-            axes[sample_locs_name] = 0
-
+        response_train = {response_name: self.response.value}
+        response_validate = {}
+        n_validate_response = 0
         if response_validation is not None:
             response_validation = jnp.asarray(response_validation)
             validation_shape = jnp.shape(response_validation)
@@ -381,27 +377,53 @@ class Model:
                     f"as the training response; got {nloc_validation} and {self.nloc}."
                 )
 
-            validate = dict(train)
-            validate[response_name] = response_validation
-            n_validate = self.nloc
-        else:
-            validate = {}
-            n_validate = 0
+            response_validate = {response_name: response_validation}
+            n_validate_response = validation_shape[0]
 
-        split = loptim.PositionSplit(
-            train=Position(train),
-            validate=Position(validate),
-            test=Position({}),
-            n_train=self.nloc,
-            n_validate=n_validate,
-            n_test=0,
+        response_split = loptim.PositionSplit(
+            Position(response_train),
+            Position(response_validate),
+            Position({}),
+            self.nobs,
+            n_validate_response,
+            0,
         )
-        batches = loptim.Batches(
-            position_keys=list(train),
-            n=self.nloc,
-            batch_size=batch_size,
-            axes=axes,
-            shuffle=shuffle_batches if batch_size is not None else False,
+
+        batch_position_keys = [response_name]
+        batch_axes = {response_name: 1}
+        split: Any = response_split
+
+        if sample_locs_name in self.graph.vars:
+            sample_locs_train = {sample_locs_name: sample_locs.value}
+            sample_locs_validate = (
+                {sample_locs_name: sample_locs.value}
+                if response_validation is not None
+                else {}
+            )
+            n_validate_locs = self.nloc if response_validation is not None else 0
+            sample_locs_split = loptim.PositionSplit(
+                Position(sample_locs_train),
+                Position(sample_locs_validate),
+                Position({}),
+                self.nloc,
+                n_validate_locs,
+                0,
+            )
+            split = loptim.PositionSplitManager([response_split, sample_locs_split])
+            batch_position_keys.append(sample_locs_name)
+            batch_axes[sample_locs_name] = 0
+
+        location_batches = loptim.Batches(
+            batch_position_keys,
+            self.nloc,
+            batch_size,
+            shuffle_batches if batch_size is not None else False,
+            batch_axes,
+        )
+        batches: Any = (
+            loptim.BatchManager([location_batches])
+            if isinstance(split, loptim.PositionSplitManager)
+            else location_batches
         )
         opt = loptim.Optimizer(
             self.parameters,
