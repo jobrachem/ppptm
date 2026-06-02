@@ -243,13 +243,27 @@ class TestModel:
         assert_fit_result_is_finite(model, result)
         assert not jnp.any(jnp.isnan(result.history.loss_validate))
 
-    def test_fit_location_batch_size_must_divide_nloc(self):
+    def test_fit_location_batch_size_must_divide_nloc_without_shuffling(self):
         model = gptm.Model.new_G(fit_y, fit_locs)
 
         with pytest.raises(ValueError, match="must divide"):
             model.fit(
                 stopper=loptim.Stopper(epochs=1, patience=1),
                 batch_size=5,
+                shuffle_batches=False,
                 seed=1,
                 save_position_history=False,
             )
+
+    def test_fit_location_batch_size_may_leave_remainder_with_shuffling(self):
+        model = gptm.Model.new_G(fit_y, fit_locs)
+
+        result = model.fit(
+            stopper=loptim.Stopper(epochs=1, patience=1),
+            batch_size=5,
+            shuffle_batches=True,
+            seed=1,
+            save_position_history=False,
+        )
+
+        assert_fit_result_is_finite(model, result)

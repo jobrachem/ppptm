@@ -62,7 +62,9 @@ def _coerce_stopper(stopper: Any | None) -> loptim.Stopper:
     )
 
 
-def _validate_location_batch_size(batch_size: int | None, nloc: int) -> None:
+def _validate_location_batch_size(
+    batch_size: int | None, nloc: int, shuffle_batches: bool
+) -> None:
     if batch_size is None:
         return
 
@@ -72,10 +74,17 @@ def _validate_location_batch_size(batch_size: int | None, nloc: int) -> None:
     if batch_size < 1:
         raise ValueError("batch_size must be a positive integer or None.")
 
-    if nloc % batch_size != 0:
+    if batch_size > nloc:
         raise ValueError(
-            "Location batch_size must divide the number of locations exactly; "
+            "Location batch_size must not exceed the number of locations; "
             f"got batch_size={batch_size} and nloc={nloc}."
+        )
+
+    if nloc % batch_size != 0 and not shuffle_batches:
+        raise ValueError(
+            "Location batch_size must divide the number of locations exactly when "
+            "shuffle_batches=False, because Liesel drops incomplete remainder "
+            f"batches; got batch_size={batch_size} and nloc={nloc}."
         )
 
 
@@ -228,6 +237,7 @@ class Model:
         bspline: Literal["onion", "identity"] = "onion",
         locscale: bool = False,
         mask_nan_response: bool = False,
+        auto_update: bool = True,
     ):
         knots = jnp.asarray(knots)
         if g_dist is None:
@@ -279,7 +289,9 @@ class Model:
 
         self._to_float32 = to_float32
 
-        self.graph = lsl.Model([self.response], to_float32=self._to_float32)
+        self.graph = lsl.Model(lsl.Var(0.0, name="stub"), to_float32=to_float32)
+        self.graph.auto_update = auto_update
+        self.graph.replace("stub", self.response)
 
     @classmethod
     def new_HG(
@@ -293,6 +305,7 @@ class Model:
         coef: SpatPTMCoef | None = None,
         locscale: bool = False,
         mask_nan_response: bool = False,
+        auto_update: bool = True,
     ) -> Model:
         knots = OnionKnots(a=a, b=b, nparam=nparam)
 
@@ -305,6 +318,7 @@ class Model:
             locscale=locscale,
             g_dist=g_dist,
             mask_nan_response=mask_nan_response,
+            auto_update=auto_update,
         )
         return model
 
@@ -316,6 +330,7 @@ class Model:
         g_dist: lsl.Dist | None = None,
         locscale: bool = False,
         mask_nan_response: bool = False,
+        auto_update: bool = True,
     ) -> Model:
         knots = OnionKnots(a=-1.0, b=1.0, nparam=3)
         coef = lsl.Var.new_value(jnp.zeros((jnp.shape(y)[-1], knots.nparam)))
@@ -329,6 +344,7 @@ class Model:
             locscale=locscale,
             g_dist=g_dist,
             mask_nan_response=mask_nan_response,
+            auto_update=auto_update,
         )
         return model
 
@@ -351,7 +367,74 @@ class Model:
         save_position_history: bool = True,
         progress_n_updates: int = 100,
     ) -> OptimResult:
-        _validate_location_batch_size(batch_size, self.nloc)
+        """
+        Fit the model parameters with :class:`liesel.optim.LieselOptim`.
+
+        The training/validation split is defined over response rows, i.e. axis 0
+        of arrays with shape ``(nobs, nloc)``. Mini-batching, if requested, is
+        location-based instead: ``response`` is batched along axis 1 and
+        ``sample_locs`` is batched along axis 0. ``inducing_locs`` are kept at their
+        full size because they define the latent GP dimensions.
+
+        Parameters
+        ----------
+        stopper
+            Stopping rule for the optimizer. If ``None``, uses
+            ``liesel.optim.Stopper(epochs=1000, patience=10, rtol=1e-6)``. Objects
+            exposing old ``max_iter``/``epochs`` and ``patience`` attributes are
+            accepted for compatibility.
+        response_validation
+            Optional validation response with shape ``(nobs_validation, nloc)``.
+            It may have a different number of rows than the training response, but
+            must have the same number of locations. When ``mask_nan_response=True``,
+            validation NaNs are masked from this array independently of the training
+            NaN pattern.
+        optimizer
+            Optax gradient transformation. Defaults to ``optax.adam(1e-3)``.
+        progress_bar
+            Whether to show Liesel's optimization progress bar.
+        batch_size
+            Number of locations per mini-batch. ``None`` uses all locations in one
+            batch. If supplied with ``shuffle_batches=False``, it must divide the
+            number of locations exactly because Liesel drops incomplete remainder
+            batches. With ``shuffle_batches=True``, arbitrary batch sizes up to the
+            number of locations are allowed; a shuffled remainder is omitted in each
+            epoch.
+        seed
+            Random seed used by Liesel for batching and optimizer bookkeeping.
+        shuffle_batches
+            Whether to shuffle location batches at the start of each epoch. Ignored
+            when ``batch_size is None``.
+        scale_loss
+            Whether Liesel's negative log-probability loss should be divided by the
+            training sample size.
+        validation_strategy
+            Validation objective passed to Liesel. ``"log_lik"`` uses only the
+            likelihood; ``"log_prob"`` also includes the log prior.
+        train_monitor
+            Training-data monitor strategy used when no validation response is
+            supplied. Passed through to ``liesel.optim.OptimEngine``.
+        save_position_history
+            Whether to store parameter positions for every epoch in the optimization
+            history.
+        progress_n_updates
+            Approximate maximum number of progress-bar updates.
+
+        Returns
+        -------
+        liesel.optim.state.OptimResult
+            Optimization result returned by Liesel. The model graph is updated to
+            ``result.best_position`` before returning.
+
+        Raises
+        ------
+        ValueError
+            If ``response_validation`` has an incompatible shape, ``batch_size`` is
+            invalid, or location batching fails because a location-shaped component
+            is fixed at the full number of locations instead of being scalar or
+            derived from ``sample_locs``.
+        """
+        _validate_location_batch_size(batch_size, self.nloc, shuffle_batches)
         _validate_progress_n_updates(progress_n_updates)
 
         response_name = self.response.name
