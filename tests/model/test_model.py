@@ -1,4 +1,5 @@
 import jax.numpy as jnp
+import liesel.model as lsl
 from jax.random import key, normal
 
 import ppptm as gptm
@@ -7,6 +8,7 @@ locs = gptm.unit_grid_vars()
 nobs = 23
 nloc = locs.sample_locs.value.shape[0]
 y = normal(key(123), (nobs, nloc))
+y_nan = y.at[0, 0].set(jnp.nan).at[2, 3].set(jnp.nan)
 
 
 class TestModel:
@@ -15,6 +17,14 @@ class TestModel:
 
         assert not jnp.any(jnp.isnan(model.response.value))
         assert not jnp.any(jnp.isnan(model.graph.log_prob))
+
+    def test_init_gaussian_mask_nan_response(self):
+        model = gptm.Model.new_G(y_nan, locs, mask_nan_response=True)
+        mask = jnp.isnan(model.response.value)
+
+        assert jnp.any(mask)
+        assert not jnp.any(jnp.isnan(model.graph.log_prob))
+        assert jnp.all(model.response.log_prob[mask] == 0.0)
 
     def test_init_gaussian_const(self):
         g = gptm.G(y, locs).new_gaussian(locwise=[])
@@ -34,6 +44,14 @@ class TestModel:
         model = gptm.Model.new_HG(y, locs)
         assert not jnp.any(jnp.isnan(model.response.value))
         assert not jnp.any(jnp.isnan(model.graph.log_prob))
+
+    def test_init_hg_mask_nan_response(self):
+        model = gptm.Model.new_HG(y_nan, locs, mask_nan_response=True)
+        mask = jnp.isnan(model.response.value)
+
+        assert jnp.any(mask)
+        assert not jnp.any(jnp.isnan(model.graph.log_prob))
+        assert jnp.all(model.response.log_prob[mask] == 0.0)
 
     def test_init_hg_ard(self):
         coef = gptm.H(locs, ard=True).new_coef()
@@ -72,6 +90,25 @@ class TestModel:
         model = gptm.Model.new_HG(y, locs)
         dist = model.init_dist()
         assert dist is not None
+
+    def test_init_dist_unmasked_with_mask_nan_response(self):
+        model = gptm.Model.new_HG(y_nan, locs, mask_nan_response=True)
+        dist = model.init_dist()
+
+        assert hasattr(dist, "transformation_and_logdet")
+        assert hasattr(dist, "inverse_transformation")
+
+    def test_validation_copy_uses_own_nan_mask(self):
+        model = gptm.Model.new_HG(y_nan, locs, mask_nan_response=True)
+        validation_y = y.at[1, 1].set(jnp.nan).at[4, 7].set(jnp.nan)
+
+        _, varval = model.graph.copy_nodes_and_vars()
+        varval["response"].value = validation_y
+        model_validation = lsl.Model([varval["response"]], to_float32=model._to_float32)
+        mask = jnp.isnan(validation_y)
+
+        assert not jnp.any(jnp.isnan(model_validation.log_prob))
+        assert jnp.all(varval["response"].log_prob[mask] == 0.0)
 
     def test_h(self):
         model = gptm.Model.new_HG(y, locs)
@@ -121,6 +158,16 @@ class TestModel:
         assert not jnp.allclose(val, y)
         assert val.shape == y.shape
         assert not jnp.any(jnp.isnan(val))
+
+    def test_log_prob_mask_nan_response(self):
+        model = gptm.Model.new_HG(y_nan, locs, mask_nan_response=True)
+
+        val = model.log_prob(y_nan)
+        mask = jnp.isnan(y_nan)
+
+        assert val.shape == y_nan.shape
+        assert not jnp.any(jnp.isnan(val))
+        assert jnp.all(val[mask] == 0.0)
 
     def test_sample(self):
         model = gptm.Model.new_HG(y, locs)

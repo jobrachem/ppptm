@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Any, Sequence, cast
 
 import jax.numpy as jnp
 import liesel.model as lsl
@@ -39,6 +39,24 @@ class G:
 
         self.min_dist = pdist(self.locs.ordered_subset.value, metric="euclidean").min()
         self.amplitude_start = jnp.asarray(amplitude_start, dtype=jnp.ones(1).dtype)
+
+    def _finite_y(self) -> Array:
+        y = self.y[jnp.isfinite(self.y)]
+        if y.size == 0:
+            raise ValueError("Cannot initialize G because y has no finite values.")
+        return y
+
+    def _mean_y(self) -> Array:
+        return jnp.mean(self._finite_y())
+
+    def _std_y(self) -> Array:
+        return jnp.std(self._finite_y())
+
+    def _median_y(self) -> Array:
+        return jnp.median(self._finite_y())
+
+    def _var_y(self) -> Array:
+        return jnp.var(self._finite_y())
 
     def new_length_scale(self, name: str) -> lsl.Var:
         val = (
@@ -116,24 +134,24 @@ class G:
         return self.new_param_const(name, bijector, init_mean, prior=None)
 
     def new_gaussian(self, locwise: Sequence[str] = ("loc", "scale")) -> lsl.Dist:
-        loc = self.new_param("loc", "loc" in locwise, init_mean=jnp.mean(self.y))
+        loc = self.new_param("loc", "loc" in locwise, init_mean=self._mean_y())
         scale = self.new_param(
             name="scale",
             locwise="scale" in locwise,
             bijector=tfb.Softplus(),
-            init_mean=jnp.std(self.y),
+            init_mean=self._std_y(),
         )
         return lsl.Dist(tfd.Normal, loc=loc, scale=scale)
 
     def new_skewnorm(
         self, locwise: Sequence[str] = ("loc", "scale", "skewness")
     ) -> lsl.Dist:
-        loc = self.new_param("loc", "loc" in locwise, init_mean=jnp.mean(self.y))
+        loc = self.new_param("loc", "loc" in locwise, init_mean=self._mean_y())
         scale = self.new_param(
             name="scale",
             locwise="scale" in locwise,
             bijector=tfb.Softplus(),
-            init_mean=jnp.std(self.y),
+            init_mean=self._std_y(),
         )
         skewness = self.new_param(
             name="skewness",
@@ -147,7 +165,8 @@ class G:
     def new_skewt(
         self, locwise: Sequence[str] = ("loc", "scale", "skewness")
     ) -> lsl.Dist:
-        med = jnp.median(self.y)
+        y = self._finite_y()
+        med = self._median_y()
 
         def mad(z):
             if z.size == 0:
@@ -155,7 +174,7 @@ class G:
             m = jnp.median(z)
             return jnp.median(jnp.abs(z - m))
 
-        scale_init = 1.4826 * mad(self.y)
+        scale_init = 1.4826 * mad(y)
 
         loc = self.new_param("loc", "loc" in locwise, init_mean=med)
 
@@ -185,8 +204,8 @@ class G:
         )
 
     def new_gamma(self, locwise: Sequence[str] = ("concentration", "rate")) -> lsl.Dist:
-        ymean = self.y.mean()
-        yvar = self.y.var()
+        ymean = self._mean_y()
+        yvar = self._var_y()
         concentration_init = ymean**2 / yvar
         rate_init = ymean / yvar
 
@@ -209,13 +228,13 @@ class G:
         self, locwise: Sequence[str] = ("concentration", "scale")
     ) -> lsl.Dist:
         eps = 1e-12  # to handle any zeros from rounding
-        y_pos = jnp.clip(self.y, eps, None)
+        y_pos = jnp.clip(self._finite_y(), eps, None)
         logy = jnp.log(y_pos)
 
         gamma = 0.5772156649015329  # Euler–Mascheroni constant
         sy2 = logy.var(ddof=1) if logy.size > 1 else 0.0
 
-        concentration_init = jnp.pi / jnp.sqrt(6.0 * max(sy2, 1e-16))
+        concentration_init = jnp.pi / jnp.sqrt(6.0 * jnp.maximum(sy2, 1e-16))
         concentration_init = jnp.clip(concentration_init, 1e-6, 1e6)
 
         scale_init = jnp.exp(logy.mean() + gamma / concentration_init)
@@ -312,7 +331,7 @@ class H:
                 distribution=distfn,
                 _name="",
                 _needs_seed=False,
-                **self.amplitude_prior.kwinputs,
+                **cast(dict[str, Any], dict(self.amplitude_prior.kwinputs)),
             )
             param.mean.dist_node = dist
         return param

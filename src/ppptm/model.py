@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias, cast
 
 import jax.numpy as jnp
 import liesel.model as lsl
 import optax
+import tensorflow_probability.substrates.jax.distributions as tfd
 from jax import Array
 from jax.typing import ArrayLike
 from liesel.goose import OptimResult, Stopper, optim_flat
@@ -22,6 +23,41 @@ from .nodes.ppvar_rw import SpatPTMCoef
 from .util.locs import LocationVars
 
 KeyArray = Any
+PTMDist: TypeAlias = (
+    TransformationDist
+    | LocScaleTransformationDist
+    | PseudoTransformationDist
+    | LocScalePseudoTransformationDist
+)
+
+
+def _safe_mask_value(value: ArrayLike) -> Array:
+    value = jnp.asarray(value)
+    finite = jnp.isfinite(value)
+    finite_count = jnp.sum(finite)
+    finite_sum = jnp.sum(jnp.where(finite, value, jnp.zeros_like(value)))
+    fallback = finite_sum / jnp.maximum(finite_count, 1)
+    return jnp.where(finite, value, fallback)
+
+
+def mask_distribution(dist: tfd.Distribution, value: ArrayLike) -> tfd.Distribution:
+    value = jnp.asarray(value)
+    return tfd.Masked(
+        distribution=dist,
+        validity_mask=~jnp.isnan(value),
+        safe_sample_fn=lambda _: _safe_mask_value(value),
+    )
+
+
+def _validate_g_dist_values_are_finite(g_dist: lsl.Dist) -> None:
+    for name, node in g_dist.kwinputs.items():
+        value = jnp.asarray(node.value)
+        if bool(jnp.any(~jnp.isfinite(value))):
+            raise ValueError(
+                "Cannot enable mask_nan_response with non-finite values in "
+                f"g_dist keyword input {name!r}. Provide a finite g_dist or let "
+                "Model initialize the default g_dist from the response."
+            )
 
 
 class HDist(lsl.Dist):
@@ -61,6 +97,7 @@ class HDist(lsl.Dist):
         scaled: bool = False,
         bspline: Literal["onion", "identity"] = "onion",
         locscale: bool = False,
+        mask_nan_response: bool = False,
         _name: str = "",
     ) -> None:
         if len(g_dist.inputs) > 0:
@@ -100,14 +137,30 @@ class HDist(lsl.Dist):
 
         self.partial_dist_class = partial_dist_class
         self.bspline = bspline_inst
+        self.mask_nan_response = mask_nan_response
 
         super().__init__(
             partial_dist_class,
             _name=_name,
             _needs_seed=False,
             coef=coef,
-            **dict(g_dist.kwinputs),
+            **cast(dict[str, Any], dict(g_dist.kwinputs)),
         )
+
+    def init_base_dist(self) -> PTMDist:
+        args = [_input.value for _input in self.inputs]
+        kwargs = {kw: _input.value for kw, _input in self.kwinputs.items()}
+        return self.distribution(*args, **kwargs)
+
+    def init_dist(self) -> tfd.Distribution:
+        dist = self.init_base_dist()
+        if not self.mask_nan_response:
+            return dist
+
+        if self.at is None:
+            raise RuntimeError(f"{repr(self)} cannot derive a NaN mask without `at`.")
+
+        return mask_distribution(dist, self.at.value)
 
 
 class Model:
@@ -121,11 +174,14 @@ class Model:
         to_float32: bool = False,
         bspline: Literal["onion", "identity"] = "onion",
         locscale: bool = False,
+        mask_nan_response: bool = False,
     ):
         knots = jnp.asarray(knots)
         if g_dist is None:
             g_dist = G(y, locs).new_gaussian()
             locscale = True
+        elif mask_nan_response:
+            _validate_g_dist_values_are_finite(g_dist)
 
         if coef is None:
             coef = H(locs, nparam=knots.size - 11).new_coef()
@@ -147,6 +203,7 @@ class Model:
         self.coef = coef
         self.g_dist = g_dist
         self.locs = locs
+        self.mask_nan_response = mask_nan_response
 
         dist = HDist(
             knots=self.knots,
@@ -156,6 +213,7 @@ class Model:
             centered=False,
             scaled=False,
             locscale=locscale,
+            mask_nan_response=mask_nan_response,
         )
 
         self.dist_node = dist
@@ -181,6 +239,7 @@ class Model:
         g_dist: lsl.Dist | None = None,
         coef: SpatPTMCoef | None = None,
         locscale: bool = False,
+        mask_nan_response: bool = False,
     ) -> Model:
         knots = OnionKnots(a=a, b=b, nparam=nparam)
 
@@ -192,6 +251,7 @@ class Model:
             bspline="onion",
             locscale=locscale,
             g_dist=g_dist,
+            mask_nan_response=mask_nan_response,
         )
         return model
 
@@ -202,6 +262,7 @@ class Model:
         locs: LocationVars,
         g_dist: lsl.Dist | None = None,
         locscale: bool = False,
+        mask_nan_response: bool = False,
     ) -> Model:
         knots = OnionKnots(a=-1.0, b=1.0, nparam=3)
         coef = lsl.Var.new_value(jnp.zeros((jnp.shape(y)[-1], knots.nparam)))
@@ -214,6 +275,7 @@ class Model:
             bspline="identity",
             locscale=locscale,
             g_dist=g_dist,
+            mask_nan_response=mask_nan_response,
         )
         return model
 
@@ -256,13 +318,13 @@ class Model:
     def init_dist(
         self,
         samples: dict[str, Array] | None = None,
-    ) -> TransformationDist | LocScaleTransformationDist | PseudoTransformationDist:
+    ) -> PTMDist:
         if samples is None:
             assert self.response.dist_node is not None
-            return self.response.dist_node.init_dist()
+            return cast(HDist, self.response.dist_node).init_base_dist()
 
         assert samples is not None
-        pred = self.graph.predict(samples=samples)
+        pred = self.graph.predict(samples=cast(Any, samples))
         coef = pred.pop(self.coef.name)
 
         kwargs_G = {}
@@ -301,5 +363,7 @@ class Model:
 
     def log_prob(self, y: ArrayLike, samples: dict[str, Array] | None = None) -> Array:
         dist = self.init_dist(samples)
+        if self.mask_nan_response:
+            dist = mask_distribution(dist, y)
         lp = dist.log_prob(y)
         return lp

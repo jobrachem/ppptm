@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import liesel.model as lsl
+import pytest
 from jax.random import key, uniform
 
 import ppptm as gptm
@@ -7,11 +8,27 @@ import ppptm as gptm
 locs = gptm.unit_grid_vars()
 nloc = locs.sample_locs.value.shape[0]
 y = uniform(key(1), (23, nloc))
+y_nan = y.at[0, 0].set(jnp.nan).at[2, 3].set(jnp.nan)
 
 
 class TestG:
     def test_init(self):
         gptm.G(y, locs=locs)
+
+    def test_nan_aware_initializers(self):
+        gaussian = gptm.G(y_nan, locs=locs).new_gaussian()
+        skewnorm = gptm.G(y_nan, locs=locs).new_skewnorm()
+        skewt = gptm.G(y_nan, locs=locs).new_skewt()
+        gamma = gptm.G(jnp.exp(y_nan), locs=locs).new_gamma()
+        weibull = gptm.G(y_nan, locs=locs).new_weibull()
+
+        for g_dist in [gaussian, skewnorm, skewt, gamma, weibull]:
+            for param in g_dist.kwinputs.values():
+                assert jnp.all(jnp.isfinite(param.value))
+
+    def test_nan_aware_initializers_require_finite_y(self):
+        with pytest.raises(ValueError, match="no finite values"):
+            gptm.G(jnp.full_like(y, jnp.nan), locs=locs).new_gaussian()
 
     def test_ard(self):
         g = gptm.G(y, locs=locs, ard=True).new_gaussian()
