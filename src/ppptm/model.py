@@ -187,8 +187,7 @@ class HDist(lsl.Dist):
                     if locscale
                     else PseudoTransformationDist
                 )
-                bspline_inst = OnionSpline(knots)
-                dist_class.bspline = bspline_inst
+                bspline_inst = dist_class.bspline
                 partial_dist_class = partial(
                     dist_class,
                     parametric_distribution=g_dist.distribution,
@@ -212,7 +211,10 @@ class HDist(lsl.Dist):
     def init_base_dist(self) -> PTMDist:
         args = [_input.value for _input in self.inputs]
         kwargs = {kw: _input.value for kw, _input in self.kwinputs.items()}
-        return self.distribution(*args, **kwargs)
+        dist = self.distribution(*args, **kwargs)
+        if not isinstance(dist, TransformationDist):
+            raise TypeError(f"Expected a PTM distribution, got {type(dist).__name__}.")
+        return dist
 
     def init_dist(self) -> tfd.Distribution:
         dist = self.init_base_dist()
