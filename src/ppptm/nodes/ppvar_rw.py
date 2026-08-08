@@ -15,6 +15,8 @@ from jax.typing import ArrayLike
 from ..util.locs import LocationVars
 from .kernel import GPKernel
 
+_IDENTITY_BIJECTOR = tfb.Identity()
+
 
 def brownian_motion_mat(nrows: int, ncols: int):
     r = jnp.arange(nrows)[:, None] + 1
@@ -36,7 +38,7 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         gp_kernel: GPKernel,
         locs: LocationVars,
         nparam: int,
-        bijector: tfb.Bijector = tfb.Identity(),
+        bijector: tfb.Bijector = _IDENTITY_BIJECTOR,
         name: str = "",
         salt: float = 1e-6,
     ) -> None:

@@ -253,6 +253,12 @@ class TestModel:
                 save_position_history=False,
             )
 
+    def test_fit_location_batch_size_must_be_integer(self):
+        model = gptm.Model.new_G(fit_y, fit_locs)
+
+        with pytest.raises(TypeError, match="positive integer or None"):
+            model.fit(batch_size=True)
+
     def test_fit_location_batch_size_may_leave_remainder_with_shuffling(self):
         model = gptm.Model.new_G(fit_y, fit_locs)
 

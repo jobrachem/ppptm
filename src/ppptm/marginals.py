@@ -1,4 +1,5 @@
-from typing import Any, Sequence, cast
+from collections.abc import Sequence
+from typing import Any, cast
 
 import jax.numpy as jnp
 import liesel.model as lsl
@@ -14,6 +15,9 @@ from .nodes.ppvar import ParamPredictiveProcessGP
 from .nodes.ppvar_rw import SpatPTMCoef
 from .util.locs import LocationVars
 
+_IDENTITY_BIJECTOR = tfb.Identity()
+_SOFTPLUS_BIJECTOR = tfb.Softplus()
+
 
 class G:
     def __init__(
@@ -25,8 +29,8 @@ class G:
         amplitude_prior: lsl.Dist | None = None,
         length_scale_prior: lsl.Dist | None = None,
         salt: float = 1e-6,
-        hyperparam_bijector: tfb.Bijector = tfb.Softplus(),
-        amplitude_start: Array = jnp.array(1.0),
+        hyperparam_bijector: tfb.Bijector = _SOFTPLUS_BIJECTOR,
+        amplitude_start: ArrayLike = 1.0,
     ):
         self.y = jnp.asarray(y)
         self.locs = locs
@@ -80,8 +84,8 @@ class G:
     def new_param_const(
         self,
         name: str,
-        bijector: tfb.Bijector = tfb.Identity(),
-        init_mean: ArrayLike = jnp.array(0.0),
+        bijector: tfb.Bijector = _IDENTITY_BIJECTOR,
+        init_mean: ArrayLike = 0.0,
         prior: lsl.Dist | None = None,
     ) -> lsl.Var:
         param = lsl.Var.new_param(jnp.asarray(init_mean), distribution=prior, name=name)
@@ -98,8 +102,8 @@ class G:
     def new_param_locwise(
         self,
         name: str,
-        bijector: tfb.Bijector = tfb.Identity(),
-        init_mean: ArrayLike = jnp.array(0.0),
+        bijector: tfb.Bijector = _IDENTITY_BIJECTOR,
+        init_mean: ArrayLike = 0.0,
     ) -> ParamPredictiveProcessGP:
         kernel = GPKernel(
             kernel=self.kernel,
@@ -125,8 +129,8 @@ class G:
         self,
         name: str,
         locwise: bool,
-        bijector: tfb.Bijector = tfb.Identity(),
-        init_mean: ArrayLike = jnp.array(0.0),
+        bijector: tfb.Bijector = _IDENTITY_BIJECTOR,
+        init_mean: ArrayLike = 0.0,
     ) -> ParamPredictiveProcessGP | lsl.Var:
         if locwise:
             init_mean = bijector.inverse(init_mean)
@@ -265,9 +269,9 @@ class H:
         locwise_amplitude: bool = False,
         amplitude_prior: lsl.Dist | None = None,
         length_scale_prior: lsl.Dist | None = None,
-        hyperparam_bijector: tfb.Bijector = tfb.Softplus(),
+        hyperparam_bijector: tfb.Bijector = _SOFTPLUS_BIJECTOR,
         salt: float = 1e-6,
-        amplitude_start: Array = jnp.array(0.2),
+        amplitude_start: ArrayLike = 0.2,
     ):
         self.locs = locs
         self.kernel = kernel

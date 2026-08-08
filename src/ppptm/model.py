@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import Any, Literal, TypeAlias, cast
+from typing import Any, Literal, cast
 
 import jax.numpy as jnp
 import liesel.model as lsl
@@ -25,13 +25,13 @@ from .nodes.ppvar_rw import SpatPTMCoef
 from .util.locs import LocationVars
 
 KeyArray = Any
-PTMDist: TypeAlias = (
+type PTMDist = (
     TransformationDist
     | LocScaleTransformationDist
     | PseudoTransformationDist
     | LocScalePseudoTransformationDist
 )
-TrainMonitor: TypeAlias = Literal[
+type TrainMonitor = Literal[
     "auto", "epoch_average", "weighted_epoch_average", "full_data"
 ]
 
@@ -69,7 +69,7 @@ def _validate_location_batch_size(
         return
 
     if isinstance(batch_size, bool) or not isinstance(batch_size, int):
-        raise ValueError("batch_size must be a positive integer or None.")
+        raise TypeError("batch_size must be a positive integer or None.")
 
     if batch_size < 1:
         raise ValueError("batch_size must be a positive integer or None.")
@@ -220,7 +220,7 @@ class HDist(lsl.Dist):
             return dist
 
         if self.at is None:
-            raise RuntimeError(f"{repr(self)} cannot derive a NaN mask without `at`.")
+            raise RuntimeError(f"{self!r} cannot derive a NaN mask without `at`.")
 
         return mask_distribution(dist, self.at.value)
 

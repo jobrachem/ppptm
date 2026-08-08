@@ -15,13 +15,15 @@ from jax.typing import ArrayLike
 from ..util.locs import LocationVars
 from .kernel import GPKernel
 
+_IDENTITY_BIJECTOR = tfb.Identity()
+
 
 class ParamPredictiveProcessGP(lsl.Var):
     def __init__(
         self,
         locs: LocationVars,
         gp_kernel: GPKernel,
-        bijector: tfb.Bijector = tfb.Identity(),
+        bijector: tfb.Bijector = _IDENTITY_BIJECTOR,
         name: str = "",
         salt: float = 1e-6,
     ) -> None:

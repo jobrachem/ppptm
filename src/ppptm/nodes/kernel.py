@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import jax.numpy as jnp
 import liesel.model as lsl
@@ -15,8 +15,8 @@ class GPKernel(lsl.Var):
     def __init__(
         self,
         kernel: KernelFactory,
-        amplitude: lsl.Var | lsl.Node | float | Array = jnp.array(1.0),
-        length_scale: lsl.Var | lsl.Node | float | Array = jnp.array(1.0),
+        amplitude: lsl.Var | lsl.Node | float | Array = 1.0,
+        length_scale: lsl.Var | lsl.Node | float | Array = 1.0,
         x1: lsl.Var | lsl.Node | Array | None = None,
         x2: lsl.Var | lsl.Node | Array | None = None,
         name: str = "",

@@ -9,6 +9,8 @@ from jax.tree_util import Partial as partial
 from .approx import BSplineApprox, bspline_basis
 from .util import TransformationSpline
 
+_EXP_BIJECTOR = tfb.Exp()
+
 
 def cumsum_leading_zero(exp_shape: Array) -> Array:
     """
@@ -20,7 +22,7 @@ def cumsum_leading_zero(exp_shape: Array) -> Array:
 
 
 class MiCoef:
-    def __init__(self, knots: Array, bijector: tfb.Bijector = tfb.Exp()) -> None:
+    def __init__(self, knots: Array, bijector: tfb.Bijector = _EXP_BIJECTOR) -> None:
         """
         Initialize PTMCoef functionality with spline knots.
 
@@ -92,7 +94,7 @@ class MiSpline(TransformationSpline):
     def __init__(
         self,
         knots: Array,
-        bijector: tfb.Bijector = tfb.Exp(),
+        bijector: tfb.Bijector = _EXP_BIJECTOR,
     ) -> None:
         self.n_chunks = 1024
         self.knots = knots

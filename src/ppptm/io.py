@@ -8,18 +8,14 @@ import pandas as pd
 
 def load_americas_locs() -> np.ndarray:
     resource = files("ppptm.data").joinpath("locs.csv.zip")
-    with as_file(resource) as p:
-        with zipfile.ZipFile(p) as zf:
-            with zf.open("locs.csv") as f:
-                return np.loadtxt(f, delimiter=",", skiprows=1)
+    with as_file(resource) as p, zipfile.ZipFile(p) as zf, zf.open("locs.csv") as f:
+        return np.loadtxt(f, delimiter=",", skiprows=1)
 
 
 def load_americas_prec() -> np.ndarray:
     resource = files("ppptm.data").joinpath("log_prec.csv.zip")
-    with as_file(resource) as p:
-        with zipfile.ZipFile(p) as zf:
-            with zf.open("log_prec.csv") as f:
-                return np.loadtxt(f, delimiter=",").T
+    with as_file(resource) as p, zipfile.ZipFile(p) as zf, zf.open("log_prec.csv") as f:
+        return np.loadtxt(f, delimiter=",").T
 
 
 @dataclass

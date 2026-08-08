@@ -128,7 +128,7 @@ class TestTFK:
         k = tfk.ExponentiatedQuadratic(amplitude=amp)
 
         K1 = k.matrix(s, s)
-        K1.shape  # (k, n, n)
+        assert K1.shape == (amp.size, s.shape[0], s.shape[0])
 
         k = tfk.ExponentiatedQuadratic(amplitude=1.0)
 
@@ -152,7 +152,7 @@ class TestTFK:
 
         s = locs.value  # (n, n)
         K1 = k.matrix(s, s)
-        K1.shape  # (n, n)
+        assert K1.shape == (s.shape[0], s.shape[0])
 
         k = tfk.ExponentiatedQuadratic(
             amplitude=1.0,
