@@ -322,20 +322,21 @@ class H:
             salt=self.salt,
         )
 
-        if self.amplitude_prior:
+        amplitude_prior = self.amplitude_prior
+        if amplitude_prior is not None:
             sc = tfb.SoftClip(low=self.hyperparam_bijector.inverse(jnp.array(1e-6)))
             chain = tfb.Chain([self.hyperparam_bijector, sc])
             bij = tfb.Invert(chain)
 
             def distfn(**kwargs):
-                d = self.amplitude_prior.distribution(**kwargs)
+                d = amplitude_prior.distribution(**kwargs)
                 return tfd.TransformedDistribution(d, bij)
 
             dist = lsl.Dist(
                 distribution=distfn,
                 _name="",
                 _needs_seed=False,
-                **cast(dict[str, Any], dict(self.amplitude_prior.kwinputs)),
+                **cast(dict[str, Any], dict(amplitude_prior.kwinputs)),
             )
             param.mean.dist_node = dist
         return param

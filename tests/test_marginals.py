@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 import liesel.model as lsl
 import pytest
+import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.random import key, uniform
 
 import ppptm as gptm
@@ -165,3 +166,12 @@ class TestH:
 
         coef = gptm.H(locs=locs, locwise_amplitude=False).new_coef()
         assert coef.amplitude.value.size == 1
+
+    def test_locwise_amplitude_captures_prior(self):
+        prior = lsl.Dist(tfd.Weibull, concentration=0.5, scale=0.5)
+        h = gptm.H(locs=locs, amplitude_prior=prior)
+        amplitude = h.new_amplitude_locwise("amplitude")
+        h.amplitude_prior = None
+
+        assert amplitude.mean.dist_node is not None
+        assert isinstance(amplitude.mean.dist_node.init_dist(), tfd.TransformedDistribution)
