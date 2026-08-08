@@ -125,8 +125,9 @@ class LocationVars:
 
     @classmethod
     def new_from(
-        cls, unordered: Array, n_subset: int = -1, from_2d_to_3d: bool = False
+        cls, unordered: ArrayLike, n_subset: int = -1, from_2d_to_3d: bool = False
     ) -> LocationVars:
+        unordered = jnp.asarray(unordered)
         if from_2d_to_3d:
             lon = unordered[..., 0]
             lat = unordered[..., 1]
