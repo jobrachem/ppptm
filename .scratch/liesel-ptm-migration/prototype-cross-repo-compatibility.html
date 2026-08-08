@@ -169,6 +169,7 @@
       <div class="note" style="margin-top: 18px">
         <p><strong>Smallest seam:</strong> replace only HDist’s onion partial with the upstream factory; keep the pseudo route. Existing-location <code>Model.init_dist(samples)</code> then remains structurally unchanged.</p>
         <p>For posterior prediction at new locations, use <code>graph.predict(samples, newdata=..., predict=[coef, *G_kwargs])</code>, then call the stored constructor. The current <code>Model.init_dist</code> has no <code>newdata</code> parameter.</p>
+        <p><strong>Public axis order:</strong> posterior axes first, then value axes, then location—for example <code>(chain, draw, obs, loc)</code>. TFP may keep its internal sample-before-batch result; ppptm reorders once at this boundary.</p>
       </div>
     </section>
 
@@ -198,7 +199,7 @@
         <tbody>
           <tr><td>Configuration</td><td>Onion + generic G; onion + loc-scale; identity + generic G; identity + loc-scale</td><td>Public class identity is deliberately not asserted.</td></tr>
           <tr><td>Surface</td><td><code>g/gi</code>, <code>h/hi</code>, <code>hg/hgi</code>, <code>log_prob</code></td><td>Golden values, inverse round-trips, finite likelihood, location-final shape.</td></tr>
-          <tr><td>Layout</td><td>Scalar; <code>(obs, loc)</code>; posterior <code>(obs, 1, loc)</code> × <code>(draw, loc)</code>; five new locations</td><td>Expected outputs <code>(loc)</code>, <code>(obs, loc)</code>, and <code>(obs, draw, loc)</code>.</td></tr>
+          <tr><td>Layout</td><td>Scalar; <code>(obs, loc)</code>; posterior draws; five new locations</td><td>Expected outputs <code>(loc)</code>, <code>(obs, loc)</code>, and <code>(draw, obs, loc)</code>. Add <code>chain</code> before <code>draw</code> when present.</td></tr>
           <tr><td>Numerics</td><td>Deterministic coefficients and fixed values</td><td>Prototype old/new max absolute drift: identity <code>0</code>; onion at most <code>7.9e-6</code>. Use a small explicit tolerance.</td></tr>
           <tr><td>Performance smoke</td><td>One posterior onion forward + inverse at a modest fixed shape</td><td>Compile and finish; record timing separately. No wall-clock assertion in the unit suite.</td></tr>
         </tbody>
@@ -209,7 +210,7 @@
       <div>
         <h2>Ownership</h2>
         <p><span class="status-gap">liesel_ptm:</span> make pseudo spline-only methods broadcast identity results to the distribution batch shape. This is a general distribution defect, reproduced without ppptm.</p>
-        <p style="margin-top: 12px"><span class="status-route">ppptm:</span> use the onion factory, use a scalar identity dummy coefficient, align public inputs with posterior batch axes, and expose the new-location prediction route.</p>
+        <p style="margin-top: 12px"><span class="status-route">ppptm:</span> use the onion factory, use a scalar identity dummy coefficient, align inputs and move posterior axes ahead of value axes once at the public boundary, and expose the new-location prediction route.</p>
         <p style="margin-top: 12px"><span class="status-pass">ppptm:</span> delete duplicates and update notebooks only after those behavior tests pass.</p>
       </div>
       <div>
@@ -217,7 +218,7 @@
         <ol class="list">
           <li>Add ppptm public shape/golden characterization.</li>
           <li>Fix pseudo broadcasting upstream and validate liesel_ptm.</li>
-          <li>Migrate HDist/Model runtime construction and posterior/new-location alignment.</li>
+          <li>Migrate HDist/Model runtime construction and enforce posterior-first public axis order.</li>
           <li>Delete ppptm spline/inverse copies and direct <code>interpax</code> only after caller checks.</li>
           <li>Replace notebook plotting and clear outputs.</li>
           <li>Run cross-repository validation; keep the local uv override release-blocking.</li>
@@ -253,29 +254,29 @@
         },
         posteriorRaw: {
           label: "Posterior · raw observations", configuration: "Onion, loc-scale", context: "Two posterior draws",
-          input: "(4, 9)", batch: "(2, 9)", expected: "(4, 2, 9)",
+          input: "(4, 9)", batch: "(2, 9)", expected: "(2, 4, 9)",
           outputs: Object.fromEntries(surfaces.map(name => [name, "broadcast error"])),
           status: "bad", finding: "TFP aligns trailing axes: observation 4 collides with posterior draw 2 unless a singleton draw axis is inserted.",
-          owner: "ppptm public boundary", next: "Have Model’s public transformations align values before calling the TFP-style distribution."
+          owner: "ppptm public boundary", next: "Have Model align values for TFP, then return posterior axes before value axes."
         },
         posteriorExpanded: {
-          label: "Posterior · aligned observations", configuration: "Onion, loc-scale", context: "Two posterior draws",
-          input: "(4, 1, 9)", batch: "(2, 9)", expected: "(4, 2, 9)", outputs: same("(4, 2, 9)"),
-          status: "pass", finding: "One inserted singleton axis preserves observations, posterior draws, and location in the expected order.",
-          owner: "ppptm public boundary", next: "Encode this alignment once at the Model surface, not in each caller."
+          label: "Posterior · TFP-aligned", configuration: "Onion, loc-scale", context: "Two posterior draws",
+          input: "(4, 1, 9)", batch: "(2, 9)", expected: "(2, 4, 9)", outputs: same("(4, 2, 9)"),
+          status: "route", finding: "TFP succeeds but returns sample-before-batch order: observations, draws, locations.",
+          owner: "ppptm public boundary", next: "Move posterior axes ahead of observation axes once before returning."
         },
         identityPosterior: {
           label: "Identity · posterior", configuration: "Identity, loc-scale", context: "Two posterior draws",
-          input: "(4, 1, 9)", batch: "(2, 9)", expected: "(4, 2, 9)",
+          input: "(4, 1, 9)", batch: "(2, 9)", expected: "(2, 4, 9)",
           outputs: { g: "(4, 2, 9)", gi: "(4, 2, 9)", h: "(4, 1, 9)", hi: "(4, 1, 9)", hg: "(4, 2, 9)", hgi: "(4, 2, 9)", log_prob: "(4, 2, 9)" },
-          status: "bad", finding: "Aligned inputs fix combined methods, but pseudo h and hi still omit the posterior draw batch.",
-          owner: "liesel_ptm", next: "The same upstream pseudo broadcast fix covers scalar and posterior cases."
+          status: "bad", finding: "Combined methods use TFP’s observation-first order, while pseudo h and hi also omit the posterior draw batch.",
+          owner: "liesel_ptm + ppptm", next: "Fix pseudo broadcasting upstream; reorder the successful result at ppptm’s boundary."
         },
         newLocations: {
           label: "Posterior · five new locations", configuration: "Onion, loc-scale", context: "Two draws, newdata",
-          input: "(4, 1, 5)", batch: "(2, 5)", expected: "(4, 2, 5)", outputs: same("(4, 2, 5)"),
-          status: "route", finding: "The shape works after graph.predict(newdata=..., predict=[coef, *G_kwargs]) constructs the distribution manually.",
-          owner: "ppptm", next: "Model.init_dist needs a newdata-aware route; the current signature cannot reach this valid path."
+          input: "(4, 1, 5)", batch: "(2, 5)", expected: "(2, 4, 5)", outputs: same("(4, 2, 5)"),
+          status: "route", finding: "The manual newdata route works numerically but returns TFP’s observation-first order.",
+          owner: "ppptm", next: "Add a newdata-aware Model route and return draws, observations, locations."
         },
         plotting: {
           label: "Native plotting", configuration: "OptimResult", context: "Notebook history",
@@ -306,8 +307,8 @@
         },
         posterior: {
           title: "Posterior axis collision",
-          description: "Compare the raw public input with the single-axis alignment required by TFP batch semantics.",
-          steps: [["posteriorRaw", "1 · Raw observations"], ["posteriorExpanded", "2 · Insert draw axis"]]
+          description: "Compare the raw public input with TFP’s working internal layout, then apply ppptm’s posterior-first contract.",
+          steps: [["posteriorRaw", "1 · Raw observations"], ["posteriorExpanded", "2 · TFP internal order"]]
         },
         newdata: {
           title: "New locations",
