@@ -1884,7 +1884,6 @@ name = "ppptm"
 source = { editable = "." }
 dependencies = [
     { name = "batram" },
-    { name = "interpax" },
     { name = "liesel" },
     { name = "liesel-ptm" },
     { name = "plotnine" },
@@ -1921,7 +1920,6 @@ r = [
 [package.metadata]
 requires-dist = [
     { name = "batram", git = "https://github.com/katzfuss-group/batram.git" },
-    { name = "interpax", specifier = ">=0.3.10" },
     { name = "liesel", git = "https://github.com/liesel-devs/liesel.git?rev=optim-devel" },
     { name = "liesel-ptm", editable = "../liesel-ptm" },
     { name = "plotnine" },

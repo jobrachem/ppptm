@@ -13,6 +13,7 @@ from liesel import optim as loptim
 from liesel.optim.state import OptimResult
 from liesel.optim.types import Position
 from liesel_ptm import onion_dist
+from liesel_ptm.bspline import OnionKnots
 from liesel_ptm.dist import (
     LocScalePseudoTransformationDist,
     LocScaleTransformationDist,
@@ -20,7 +21,6 @@ from liesel_ptm.dist import (
     TransformationDist,
 )
 
-from .bspline import OnionKnots
 from .marginals import G, H
 from .nodes.ppvar_rw import SpatPTMCoef
 from .util.locs import LocationVars
