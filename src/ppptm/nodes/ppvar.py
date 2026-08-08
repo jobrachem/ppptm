@@ -8,6 +8,7 @@ import pandas as pd
 import tensorflow_probability.substrates.jax.bijectors as tfb
 import tensorflow_probability.substrates.jax.distributions as tfd
 import tensorflow_probability.substrates.jax.math.psd_kernels as tfk
+from jax import Array
 from jax.random import key
 from jax.scipy.linalg import solve_triangular
 from jax.typing import ArrayLike
@@ -134,7 +135,7 @@ class ParamPredictiveProcessGP(lsl.Var):
         salt: float = 1e-6,
         amplitude: ArrayLike = 0.1,
         length_scale: ArrayLike = 0.1,
-    ) -> pd.DataFrame:
+    ) -> Array:
         amplitude = jnp.asarray(amplitude)
         length_scale = jnp.asarray(length_scale)
 
