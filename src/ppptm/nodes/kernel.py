@@ -7,8 +7,7 @@ import liesel.model as lsl
 import tensorflow_probability.substrates.jax.math.psd_kernels as tfk
 from jax import Array
 
-KernelFactory = Callable[[Array, Array], tfk.PositiveSemidefiniteKernel]
-CustomKernelFactory = Callable[..., tfk.PositiveSemidefiniteKernel]
+KernelFactory = Callable[..., tfk.PositiveSemidefiniteKernel]
 
 
 class GPKernel(lsl.Var):

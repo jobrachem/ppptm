@@ -10,7 +10,7 @@ from jax import Array
 from jax.typing import ArrayLike
 from scipy.spatial.distance import pdist
 
-from .nodes.kernel import GPKernel
+from .nodes.kernel import GPKernel, KernelFactory
 from .nodes.ppvar import ParamPredictiveProcessGP
 from .nodes.ppvar_rw import SpatPTMCoef
 from .util.locs import LocationVars
@@ -24,7 +24,7 @@ class G:
         self,
         y: ArrayLike,
         locs: LocationVars,
-        kernel: tfk.PositiveSemidefiniteKernel = tfk.MaternFiveHalves,
+        kernel: KernelFactory = tfk.MaternFiveHalves,
         ard: bool = False,
         amplitude_prior: lsl.Dist | None = None,
         length_scale_prior: lsl.Dist | None = None,
@@ -264,7 +264,7 @@ class H:
         self,
         locs: LocationVars,
         nparam: int = 40,
-        kernel: tfk.PositiveSemidefiniteKernel = tfk.MaternFiveHalves,
+        kernel: KernelFactory = tfk.MaternFiveHalves,
         ard: bool = False,
         locwise_amplitude: bool = False,
         amplitude_prior: lsl.Dist | None = None,
