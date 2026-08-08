@@ -30,8 +30,16 @@ class GPKernel(lsl.Var):
             dummy = jnp.ones((1, lsval.shape[-1]))
         else:
             dummy = jnp.ones((1, 2))
-        self.x1 = x1 if x1 is not None else lsl.Value(dummy)
-        self.x2 = x2 if x2 is not None else lsl.Value(dummy)
+        self.x1 = (
+            x1
+            if isinstance(x1, lsl.Var | lsl.Node)
+            else lsl.Value(dummy if x1 is None else x1)
+        )
+        self.x2 = (
+            x2
+            if isinstance(x2, lsl.Var | lsl.Node)
+            else lsl.Value(dummy if x2 is None else x2)
+        )
         self.kernel = kernel
 
         def _evaluate_kernel(x1, x2, amplitude, length_scale):

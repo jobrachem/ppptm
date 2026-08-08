@@ -352,6 +352,12 @@ class Model:
     def parameters(self):
         return list(self.graph.parameters)
 
+    @property
+    def spatial_coef(self) -> SpatPTMCoef:
+        if not isinstance(self.coef, SpatPTMCoef):
+            raise TypeError("This model does not have spatial coefficients.")
+        return self.coef
+
     def fit(
         self,
         stopper: Any | None = None,

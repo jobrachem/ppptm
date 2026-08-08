@@ -25,12 +25,21 @@ def assert_fit_result_is_finite(model, result):
     assert not jnp.any(jnp.isnan(model.graph.log_prob))
 
 
+def locwise_param(dist: lsl.Dist, name: str) -> gptm.ParamPredictiveProcessGP:
+    param = dist[name]
+    assert isinstance(param, gptm.ParamPredictiveProcessGP)
+    return param
+
+
 class TestModel:
     def test_init_gaussian(self):
         model = gptm.Model.new_G(y, locs)
 
         assert not jnp.any(jnp.isnan(model.response.value))
         assert not jnp.any(jnp.isnan(model.graph.log_prob))
+
+        with pytest.raises(TypeError, match="does not have spatial coefficients"):
+            _ = model.spatial_coef
 
     def test_init_gaussian_mask_nan_response(self):
         model = gptm.Model.new_G(y_nan, locs, mask_nan_response=True)
@@ -126,8 +135,10 @@ class TestModel:
 
     def test_h(self):
         model = gptm.Model.new_HG(y, locs)
-        samp = model.coef.latent_var.sample((1,), seed=key(1))["coef_latent"].squeeze()
-        model.coef.latent_var.value = 0.1 * samp
+        samp = model.spatial_coef.latent_var.sample((1,), seed=key(1))[
+            "coef_latent"
+        ].squeeze()
+        model.spatial_coef.latent_var.value = 0.1 * samp
 
         val = model.h(y)
 
@@ -140,8 +151,10 @@ class TestModel:
 
     def test_hg(self):
         model = gptm.Model.new_HG(y, locs)
-        samp = model.coef.latent_var.sample((1,), seed=key(1))["coef_latent"].squeeze()
-        model.coef.latent_var.value = 0.1 * samp
+        samp = model.spatial_coef.latent_var.sample((1,), seed=key(1))[
+            "coef_latent"
+        ].squeeze()
+        model.spatial_coef.latent_var.value = 0.1 * samp
 
         val = model.hg(y)
 
@@ -186,14 +199,17 @@ class TestModel:
     def test_sample(self):
         model = gptm.Model.new_HG(y, locs)
         samples = model.graph.sample((1,), seed=key(1))
-        assert samples["coef_latent"].shape == (1,) + model.coef.latent_var.value.shape
+        assert (
+            samples["coef_latent"].shape
+            == (1,) + model.spatial_coef.latent_var.value.shape
+        )
         assert (
             samples["loc_latent"].shape
-            == (1,) + model.g_dist["loc"].latent_var.value.shape
+            == (1,) + locwise_param(model.g_dist, "loc").latent_var.value.shape
         )
         assert (
             samples["scale_latent"].shape
-            == (1,) + model.g_dist["scale"].latent_var.value.shape
+            == (1,) + locwise_param(model.g_dist, "scale").latent_var.value.shape
         )
         assert samples["response"].shape == (1,) + model.response.value.shape
 

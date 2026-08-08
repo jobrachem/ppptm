@@ -11,6 +11,12 @@ y = uniform(key(1), (23, nloc))
 y_nan = y.at[0, 0].set(jnp.nan).at[2, 3].set(jnp.nan)
 
 
+def locwise_param(dist: lsl.Dist, name: str) -> gptm.ParamPredictiveProcessGP:
+    param = dist[name]
+    assert isinstance(param, gptm.ParamPredictiveProcessGP)
+    return param
+
+
 class TestG:
     def test_init(self):
         gptm.G(y, locs=locs)
@@ -32,12 +38,12 @@ class TestG:
 
     def test_ard(self):
         g = gptm.G(y, locs=locs, ard=True).new_gaussian()
-        assert g["loc"].length_scale.value.size == 2
-        assert g["scale"].length_scale.value.size == 2
+        assert locwise_param(g, "loc").length_scale.value.size == 2
+        assert locwise_param(g, "scale").length_scale.value.size == 2
 
         g = gptm.G(y, locs=locs, ard=False).new_gaussian()
-        assert g["loc"].length_scale.value.size == 1
-        assert g["scale"].length_scale.value.size == 1
+        assert locwise_param(g, "loc").length_scale.value.size == 1
+        assert locwise_param(g, "scale").length_scale.value.size == 1
 
     def test_gaussian_locwise(self):
         g = gptm.G(y, locs=locs).new_gaussian()
@@ -46,11 +52,15 @@ class TestG:
 
         assert not jnp.any(jnp.isnan(g["loc"].value))
         assert g["loc"].value.shape == (locs.locs.nloc,)
-        assert g["loc"].latent_var.value.shape == (locs.locs.ordered_subset.shape[0],)
+        assert locwise_param(g, "loc").latent_var.value.shape == (
+            locs.locs.ordered_subset.shape[0],
+        )
 
         assert not jnp.any(jnp.isnan(g["scale"].value))
         assert g["scale"].value.shape == (locs.locs.nloc,)
-        assert g["scale"].latent_var.value.shape == (locs.locs.ordered_subset.shape[0],)
+        assert locwise_param(g, "scale").latent_var.value.shape == (
+            locs.locs.ordered_subset.shape[0],
+        )
 
     def test_gaussian_const(self):
         g = gptm.G(y, locs=locs).new_gaussian(locwise=[])
@@ -70,15 +80,19 @@ class TestG:
 
         assert not jnp.any(jnp.isnan(g["loc"].value))
         assert g["loc"].value.shape == (locs.locs.nloc,)
-        assert g["loc"].latent_var.value.shape == (locs.locs.ordered_subset.shape[0],)
+        assert locwise_param(g, "loc").latent_var.value.shape == (
+            locs.locs.ordered_subset.shape[0],
+        )
 
         assert not jnp.any(jnp.isnan(g["scale"].value))
         assert g["scale"].value.shape == (locs.locs.nloc,)
-        assert g["scale"].latent_var.value.shape == (locs.locs.ordered_subset.shape[0],)
+        assert locwise_param(g, "scale").latent_var.value.shape == (
+            locs.locs.ordered_subset.shape[0],
+        )
 
         assert not jnp.any(jnp.isnan(g["skewness"].value))
         assert g["skewness"].value.shape == (locs.locs.nloc,)
-        assert g["skewness"].latent_var.value.shape == (
+        assert locwise_param(g, "skewness").latent_var.value.shape == (
             locs.locs.ordered_subset.shape[0],
         )
 
@@ -92,7 +106,9 @@ class TestG:
 
         assert not jnp.any(jnp.isnan(g["loc"].value))
         assert g["loc"].value.shape == (locs.locs.nloc,)
-        assert g["loc"].latent_var.value.shape == (locs.locs.ordered_subset.shape[0],)
+        assert locwise_param(g, "loc").latent_var.value.shape == (
+            locs.locs.ordered_subset.shape[0],
+        )
 
         assert not jnp.any(jnp.isnan(g["scale"].value))
         assert g["scale"].value.shape == ()
@@ -110,13 +126,15 @@ class TestG:
 
         assert not jnp.any(jnp.isnan(g["concentration"].value))
         assert g["concentration"].value.shape == (locs.locs.nloc,)
-        assert g["concentration"].latent_var.value.shape == (
+        assert locwise_param(g, "concentration").latent_var.value.shape == (
             locs.locs.ordered_subset.shape[0],
         )
 
         assert not jnp.any(jnp.isnan(g["rate"].value))
         assert g["rate"].value.shape == (locs.locs.nloc,)
-        assert g["rate"].latent_var.value.shape == (locs.locs.ordered_subset.shape[0],)
+        assert locwise_param(g, "rate").latent_var.value.shape == (
+            locs.locs.ordered_subset.shape[0],
+        )
 
     def test_gamma_const(self):
         g = gptm.G(jnp.exp(y), locs=locs).new_gamma(locwise=[])

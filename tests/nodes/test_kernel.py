@@ -26,6 +26,16 @@ class TestGPKernel:
             kernel.x2.value.shape[0],
         )
 
+    def test_init_with_array_locations(self):
+        kernel = kl.GPKernel(
+            x1=locs.value,
+            x2=locs.value,
+            kernel=tfk.ExponentiatedQuadratic,
+        )
+
+        assert jnp.array_equal(kernel.x1.value, locs.value)
+        assert jnp.array_equal(kernel.x2.value, locs.value)
+
     def test_init_with_scalar_amplitude(self):
         amplitude = lsl.Var.new_param(2.0, name="amplitude")
         kernel = kl.GPKernel(
