@@ -45,7 +45,8 @@ dev = [
     "pytest-cov",
     "pyupgrade",
     "plotnine",
-    "ipykernel"
+    "ipykernel",
+    "ruff>=0.16.2",
 ]
 docs = [
     "sphinx>=7.2.6",
