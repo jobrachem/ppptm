@@ -58,14 +58,33 @@ class Locations:
         return locs_3d
 
 
-@dataclass
+@dataclass(init=False)
 class LocationVars:
     ordered: lsl.Var
     ordered_subset: lsl.Var
-    locs: Locations | None = None  # kept for backwards compatibility
+    _locs: Locations | None
+
+    def __init__(
+        self,
+        ordered: lsl.Var,
+        ordered_subset: lsl.Var,
+        locs: Locations | None = None,
+    ) -> None:
+        self.ordered = ordered
+        self.ordered_subset = ordered_subset
+        self._locs = locs
+        self.__post_init__()
 
     def __post_init__(self):
         self._validate_shape(self.ordered, self.ordered_subset)
+
+    @property
+    def locs(self) -> Locations:
+        if self._locs is None:
+            raise RuntimeError(
+                "Location metadata is unavailable; use sample_locs and inducing_locs."
+            )
+        return self._locs
 
     @staticmethod
     def _validate_shape(locs1: lsl.Var, locs2: lsl.Var):
