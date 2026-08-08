@@ -12,6 +12,7 @@ from jax.typing import ArrayLike
 from liesel import optim as loptim
 from liesel.optim.state import OptimResult
 from liesel.optim.types import Position
+from liesel_ptm import onion_dist
 from liesel_ptm.dist import (
     LocScalePseudoTransformationDist,
     LocScaleTransformationDist,
@@ -19,7 +20,7 @@ from liesel_ptm.dist import (
     TransformationDist,
 )
 
-from .bspline import OnionKnots, OnionSpline
+from .bspline import OnionKnots
 from .marginals import G, H
 from .nodes.ppvar_rw import SpatPTMCoef
 from .util.locs import LocationVars
@@ -168,15 +169,12 @@ class HDist(lsl.Dist):
                 "be defined with keyword inputs."
             )
 
-        trafo_dist = LocScaleTransformationDist if locscale else TransformationDist
-
         match bspline:
             case "onion":
-                bspline_inst = OnionSpline(knots)
-                partial_dist_class = partial(
-                    trafo_dist,
+                partial_dist_class = onion_dist(
+                    knots=knots,
+                    loc_scale=locscale,
                     parametric_distribution=g_dist.distribution,
-                    bspline=bspline_inst,
                     centered=centered,
                     scaled=scaled,
                     batched=True,
@@ -187,7 +185,6 @@ class HDist(lsl.Dist):
                     if locscale
                     else PseudoTransformationDist
                 )
-                bspline_inst = dist_class.bspline
                 partial_dist_class = partial(
                     dist_class,
                     parametric_distribution=g_dist.distribution,
@@ -197,7 +194,6 @@ class HDist(lsl.Dist):
                 )
 
         self.partial_dist_class = partial_dist_class
-        self.bspline = bspline_inst
         self.mask_nan_response = mask_nan_response
 
         super().__init__(
@@ -251,8 +247,12 @@ class Model:
         if coef is None:
             coef = H(locs, nparam=knots.size - 11).new_coef()
 
-        nloc1, D = coef.value.shape
         nobs, nloc2 = jnp.shape(y)
+        coef_shape = jnp.shape(coef.value)
+        if len(coef_shape) == 0:
+            nloc1, D = nloc2, 0
+        else:
+            nloc1, D = coef_shape
 
         if not nloc1 == nloc2:
             raise ValueError(
@@ -335,7 +335,7 @@ class Model:
         auto_update: bool = True,
     ) -> Model:
         knots = OnionKnots(a=-1.0, b=1.0, nparam=3)
-        coef = lsl.Var.new_value(jnp.zeros((jnp.shape(y)[-1], knots.nparam)))
+        coef = lsl.Var.new_value(jnp.array(0.0), name="coef")
 
         model = cls(
             y=y,
@@ -556,52 +556,180 @@ class Model:
     def init_dist(
         self,
         samples: dict[str, Array] | None = None,
+        newdata: dict[str, ArrayLike] | None = None,
     ) -> PTMDist:
+        if samples is None and newdata is not None:
+            raise ValueError("newdata requires posterior samples.")
+
         if samples is None:
             assert self.response.dist_node is not None
             return cast(HDist, self.response.dist_node).init_base_dist()
 
-        assert samples is not None
-        pred = self.graph.predict(samples=cast(Any, samples))
-        coef = pred.pop(self.coef.name)
+        sample_shape = self._sample_shape(samples)
+        predict = []
+        pred = {}
+        coef_dynamic = isinstance(self.coef, SpatPTMCoef) or self.coef.name in samples
+        if coef_dynamic:
+            predict.append(self.coef.name)
+            coef = None
+        else:
+            coef = self.coef.value
 
         kwargs_G = {}
-        for param_name in self.g_dist.kwinputs:
-            kwargs_G[param_name] = pred.pop(param_name)
+        for param_name, param in self.g_dist.kwinputs.items():
+            if not getattr(param.var, "parameter_names", None):
+                value = jnp.asarray(param.value)
+                kwargs_G[param_name] = jnp.broadcast_to(
+                    value, sample_shape + value.shape
+                )
+            else:
+                predict.append(param_name)
+
+        if predict:
+            pred = self.graph.predict(
+                samples=cast(Any, samples), predict=predict, newdata=newdata
+            )
+            if coef is None:
+                coef = pred[self.coef.name]
+            for param_name in self.g_dist.kwinputs:
+                if param_name in pred:
+                    kwargs_G[param_name] = pred[param_name]
+
+        assert coef is not None
+        if jnp.ndim(self.coef.value) > 0 and not coef_dynamic:
+            coef = jnp.broadcast_to(jnp.asarray(coef), sample_shape + jnp.shape(coef))
 
         return self.dist_node.partial_dist_class(coef=coef, **kwargs_G)
 
-    def g(self, y: ArrayLike, samples: dict[str, Array] | None = None) -> Array:
-        dist = self.init_dist(samples)
-        return dist.transformation_and_logdet_parametric(y)[0]
+    def _sample_shape(self, samples: dict[str, Array]) -> tuple[int, ...]:
+        for name, value in samples.items():
+            if name in self.graph.vars:
+                model_value = self.graph.vars[name].value
+            elif name in self.graph.nodes:
+                model_value = self.graph.nodes[name].value
+            else:
+                continue
+            model_ndim = jnp.ndim(model_value)
+            value_ndim = jnp.ndim(value)
+            if value_ndim >= model_ndim:
+                return jnp.shape(value)[: value_ndim - model_ndim]
+        raise ValueError("Could not determine posterior sample shape.")
 
-    def gi(self, yt: ArrayLike, samples: dict[str, Array] | None = None) -> Array:
-        dist = self.init_dist(samples)
-        return dist.inverse_transformation_parametric(yt)
+    def _public_transform(
+        self,
+        value: ArrayLike,
+        samples: dict[str, Array] | None,
+        newdata: dict[str, ArrayLike] | None,
+        operation: Any,
+        mask_nan: bool = False,
+    ) -> Array:
+        dist = self.init_dist(samples, newdata)
+        value = jnp.asarray(value)
+        posterior_ndims = len(self._sample_shape(samples)) if samples is not None else 0
+        if posterior_ndims > 0 and value.ndim > 0:
+            value = jnp.reshape(
+                value,
+                value.shape[:-1] + (1,) * posterior_ndims + value.shape[-1:],
+            )
+        if mask_nan and self.mask_nan_response:
+            dist = mask_distribution(dist, value)
+        result = operation(dist, value)
+        if posterior_ndims == 0:
+            return result
 
-    def h(self, yt: ArrayLike, samples: dict[str, Array] | None = None) -> Array:
-        dist = self.init_dist(samples)
-        zt = dist.transformation_and_logdet_spline(yt)[0]
-        return zt
+        value_ndims = result.ndim - posterior_ndims - 1
+        permutation = (
+            tuple(range(value_ndims, value_ndims + posterior_ndims))
+            + tuple(range(value_ndims))
+            + (result.ndim - 1,)
+        )
+        return jnp.transpose(result, permutation)
 
-    def hi(self, zt: ArrayLike, samples: dict[str, Array] | None = None) -> Array:
-        dist = self.init_dist(samples)
-        yt = dist.inverse_transformation_spline(zt)
-        return yt
+    def g(
+        self,
+        y: ArrayLike,
+        samples: dict[str, Array] | None = None,
+        newdata: dict[str, ArrayLike] | None = None,
+    ) -> Array:
+        return self._public_transform(
+            y,
+            samples,
+            newdata,
+            lambda dist, value: dist.transformation_and_logdet_parametric(value)[0],
+        )
 
-    def hg(self, y: ArrayLike, samples: dict[str, Array] | None = None) -> Array:
-        dist = self.init_dist(samples)
-        zt = dist.transformation_and_logdet(y)[0]
-        return zt
+    def gi(
+        self,
+        yt: ArrayLike,
+        samples: dict[str, Array] | None = None,
+        newdata: dict[str, ArrayLike] | None = None,
+    ) -> Array:
+        return self._public_transform(
+            yt,
+            samples,
+            newdata,
+            lambda dist, value: dist.inverse_transformation_parametric(value),
+        )
 
-    def hgi(self, zt: ArrayLike, samples: dict[str, Array] | None = None) -> Array:
-        dist = self.init_dist(samples)
-        y = dist.inverse_transformation(zt)
-        return y
+    def h(
+        self,
+        yt: ArrayLike,
+        samples: dict[str, Array] | None = None,
+        newdata: dict[str, ArrayLike] | None = None,
+    ) -> Array:
+        return self._public_transform(
+            yt,
+            samples,
+            newdata,
+            lambda dist, value: dist.transformation_and_logdet_spline(value)[0],
+        )
 
-    def log_prob(self, y: ArrayLike, samples: dict[str, Array] | None = None) -> Array:
-        dist = self.init_dist(samples)
-        if self.mask_nan_response:
-            dist = mask_distribution(dist, y)
-        lp = dist.log_prob(y)
-        return lp
+    def hi(
+        self,
+        zt: ArrayLike,
+        samples: dict[str, Array] | None = None,
+        newdata: dict[str, ArrayLike] | None = None,
+    ) -> Array:
+        return self._public_transform(
+            zt,
+            samples,
+            newdata,
+            lambda dist, value: dist.inverse_transformation_spline(value),
+        )
+
+    def hg(
+        self,
+        y: ArrayLike,
+        samples: dict[str, Array] | None = None,
+        newdata: dict[str, ArrayLike] | None = None,
+    ) -> Array:
+        return self._public_transform(
+            y,
+            samples,
+            newdata,
+            lambda dist, value: dist.transformation_and_logdet(value)[0],
+        )
+
+    def hgi(
+        self,
+        zt: ArrayLike,
+        samples: dict[str, Array] | None = None,
+        newdata: dict[str, ArrayLike] | None = None,
+    ) -> Array:
+        return self._public_transform(
+            zt, samples, newdata, lambda dist, value: dist.inverse_transformation(value)
+        )
+
+    def log_prob(
+        self,
+        y: ArrayLike,
+        samples: dict[str, Array] | None = None,
+        newdata: dict[str, ArrayLike] | None = None,
+    ) -> Array:
+        return self._public_transform(
+            y,
+            samples,
+            newdata,
+            lambda dist, value: dist.log_prob(value),
+            mask_nan=True,
+        )

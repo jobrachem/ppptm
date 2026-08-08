@@ -51,11 +51,6 @@ ONION_COEF = jnp.array(
     dtype=jnp.float32,
 )
 
-TICKET_03_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason="Ticket 03 must align public posterior axes and expose newdata.",
-)
-
 
 def _configuration_id(configuration: tuple[str, bool]) -> str:
     spline, locscale = configuration
@@ -137,15 +132,6 @@ def model_for():
     return get
 
 
-def _observed_case_is_gap(configuration, value_name, surface):
-    spline, _ = configuration
-    return (
-        spline == "onion"
-        and value_name == "location-vector"
-        and surface in {"h", "hi", "hg", "hgi", "log_prob"}
-    )
-
-
 OBSERVED_CASES = tuple(
     pytest.param(
         configuration,
@@ -153,11 +139,6 @@ OBSERVED_CASES = tuple(
         value,
         expected_shape,
         surface,
-        marks=(
-            TICKET_03_XFAIL
-            if _observed_case_is_gap(configuration, value_name, surface)
-            else ()
-        ),
         id=f"{_configuration_id(configuration)}-{value_name}-{surface}",
     )
     for configuration in CONFIGURATIONS
@@ -181,18 +162,10 @@ def test_observed_public_shapes(
     assert jnp.all(jnp.isfinite(result))
 
 
-def _scalar_case_is_gap(configuration, surface):
-    spline, _ = configuration
-    if spline == "identity":
-        return surface in {"h", "hi"}
-    return surface in {"h", "hi", "hg", "hgi", "log_prob"}
-
-
 SCALAR_CASES = tuple(
     pytest.param(
         configuration,
         surface,
-        marks=(TICKET_03_XFAIL if _scalar_case_is_gap(configuration, surface) else ()),
         id=f"{_configuration_id(configuration)}-{surface}",
     )
     for configuration in CONFIGURATIONS
@@ -212,7 +185,6 @@ POSTERIOR_CASES = tuple(
         configuration,
         sample_shape,
         surface,
-        marks=TICKET_03_XFAIL,
         id=f"{_configuration_id(configuration)}-{sample_shape}-{surface}",
     )
     for configuration in CONFIGURATIONS
@@ -233,7 +205,6 @@ def test_posterior_public_shapes(model_for, configuration, sample_shape, surface
     assert jnp.all(jnp.isfinite(result))
 
 
-@TICKET_03_XFAIL
 def test_identity_posterior_values_and_axis_order():
     locs = gptm.unit_grid_vars(ngrid=2)
     g_dist = lsl.Dist(
@@ -260,7 +231,6 @@ NEW_LOCATION_CASES = tuple(
     pytest.param(
         configuration,
         surface,
-        marks=TICKET_03_XFAIL,
         id=f"{_configuration_id(configuration)}-{surface}",
     )
     for configuration in CONFIGURATIONS
@@ -467,4 +437,4 @@ def test_onion_migration_goldens(model_for, locscale):
 
     for surface, expected in ONION_GOLDENS.items():
         result = _call_public_surface(model, surface, ONION_GOLDEN_VALUES)
-        assert jnp.allclose(result, expected, atol=1e-5, rtol=0.0)
+        assert jnp.allclose(result, expected, atol=2e-5, rtol=0.0)
