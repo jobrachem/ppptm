@@ -5,10 +5,10 @@ import jax.numpy as jnp
 import numpy as np
 from jax import Array
 
-from ..util.inverse_interpax import inv1d
+from ..util.inverse_interpax import inv1d as _inv1d
 from .approx import BSplineApprox
 
-inv1d = jax.jit(inv1d, static_argnums=(1, 2, 3, 4, 5))
+inv1d = jax.jit(_inv1d, static_argnums=(1, 2, 3, 4, 5))
 
 
 def _broadcast_leading(x, target_batch_shape):

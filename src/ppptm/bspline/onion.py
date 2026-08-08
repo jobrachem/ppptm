@@ -125,7 +125,7 @@ class OnionSpline(TransformationSpline):
             Array of spline knots.
         """
         super().__init__(knots)
-        self._compute_coef = jax.jit(get_onion_fn(knots))  # type: ignore
+        self._compute_coef = jax.jit(get_onion_fn(knots))
 
     def _dot_and_deriv_n_fullbatch(self, x: Array, coef: Array) -> tuple[Array, Array]:
         """
