@@ -198,9 +198,7 @@ class TestModel:
         assert samples["response"].shape == (1,) + model.response.value.shape
 
     def test_fit_gaussian_mask_nan_response_location_batching(self):
-        model = gptm.Model.new_G(
-            fit_y_nan, fit_locs, mask_nan_response=True
-        )
+        model = gptm.Model.new_G(fit_y_nan, fit_locs, mask_nan_response=True)
         result = model.fit(
             stopper=loptim.Stopper(epochs=1, patience=1),
             batch_size=4,
