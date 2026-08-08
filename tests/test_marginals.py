@@ -174,4 +174,6 @@ class TestH:
         h.amplitude_prior = None
 
         assert amplitude.mean.dist_node is not None
-        assert isinstance(amplitude.mean.dist_node.init_dist(), tfd.TransformedDistribution)
+        assert isinstance(
+            amplitude.mean.dist_node.init_dist(), tfd.TransformedDistribution
+        )
