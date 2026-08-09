@@ -48,12 +48,10 @@ dev = [
     "ruff>=0.16.2",
 ]
 docs = [
-    "sphinx>=7.2.6",
-    "sphinx-autodoc-typehints>=2.0",
-    "sphinx-book-theme>=1.1.0",
-    "sphinx-copybutton>=0.5",
-    "sphinx-remove-toctrees>=0.0.3",
-    "myst-nb",
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.7.7",
+    "mkdocstrings[python]>=1.0.6",
+    "pymdown-extensions>=11.0.1",
 ]
 
 # Hatch configuration to pull the version from ppptm/__about__.py
@@ -75,6 +73,7 @@ max-line-length = 90
 extend-ignore = ["E203"]
 
 [tool.pytest.ini_options]
+addopts = ["--doctest-glob=*.md"]
 filterwarnings = [
     "ignore:.*`product` is deprecated:DeprecationWarning",
     "ignore:.*jax.core.Shape is deprecated:DeprecationWarning",

@@ -1,5 +1,3 @@
-from typing import Any
-
 import jax.numpy as jnp
 import liesel.model as lsl
 import pytest
@@ -72,7 +70,7 @@ def _new_model(
 
     if fixed:
         g_dist = _normal_dist()
-        coef: Any = (
+        coef: lsl.Var | None = (
             lsl.Var.new_value(ONION_COEF, name="coef") if spline == "onion" else None
         )
     else:

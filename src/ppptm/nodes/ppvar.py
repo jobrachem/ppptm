@@ -20,6 +20,51 @@ _IDENTITY_BIJECTOR = tfb.Identity()
 
 
 class ParamPredictiveProcessGP(lsl.Var):
+    """Predictive-process Gaussian-process parameter over spatial locations.
+
+    Parameters
+    ----------
+    locs
+        Ordered sample and inducing-location variables with shapes ``(N, d)`` and
+        ``(M, d)``.
+    gp_kernel
+        Kernel whose amplitude and length scale define the process.
+    bijector
+        Transformation applied to the latent GP value plus its mean.
+    name
+        Liesel node name.
+    salt
+        Diagonal jitter added before Cholesky decomposition; ``1e-6`` by default.
+        Increase it if the inducing covariance is numerically singular.
+
+    Attributes
+    ----------
+    latent_var
+        Standard-normal latent variables at inducing locations.
+    mean
+        Scalar GP mean parameter.
+    Kuu, Kdu
+        Inducing-to-inducing and sample-to-inducing covariance nodes.
+
+    Notes
+    -----
+    The predictive process stores ``M`` standard-normal latent values and projects
+    them to ``N`` sample locations by a triangular solve with the Cholesky factor of
+    ``Kuu``. This reduces latent dimension when ``M < N``. The node value has shape
+    ``(N,)``.
+
+    Examples
+    --------
+    ```pycon
+    >>> import tensorflow_probability.substrates.jax.math.psd_kernels as tfk
+    >>> from ppptm import GPKernel, ParamPredictiveProcessGP, unit_grid_vars
+    >>> gp = ParamPredictiveProcessGP(unit_grid_vars(2), GPKernel(tfk.ExponentiatedQuadratic), name="gp")
+    >>> gp.value.shape
+    (4,)
+
+    ```
+    """
+
     def __init__(
         self,
         locs: LocationVars,
@@ -101,6 +146,40 @@ class ParamPredictiveProcessGP(lsl.Var):
         amplitude: ArrayLike = 0.1,
         length_scale: ArrayLike = 0.1,
     ) -> pd.DataFrame:
+        """Sample predictive-process draws in long tabular form.
+
+        Parameters
+        ----------
+        locs
+            Ordered sample and inducing-location variables.
+        n
+            Number of draws; ``1`` by default.
+        seed
+            JAX random seed; ``1`` by default, making repeated calls deterministic.
+        salt
+            Diagonal covariance jitter; ``1e-6`` by default.
+        amplitude
+            Initial GP amplitude.
+        length_scale
+            Initial GP length scale.
+
+        Returns
+        -------
+        samples :
+            Long data frame with ``n * N`` rows and columns ``lon``, ``lat``,
+            ``loc``, ``sample``, and ``value``. It is ready for plotting or grouped
+            summaries.
+
+        Examples
+        --------
+        ```pycon
+        >>> from ppptm import GPVar, unit_grid_vars
+        >>> draws = GPVar.sample_df(unit_grid_vars(2), n=2, seed=7)
+        >>> assert draws.shape == (8, 5)
+        >>> assert draws["sample"].nunique() == 2
+
+        ```
+        """
         amplitude = jnp.asarray(amplitude)
         length_scale = jnp.asarray(length_scale)
 
@@ -136,6 +215,39 @@ class ParamPredictiveProcessGP(lsl.Var):
         amplitude: ArrayLike = 0.1,
         length_scale: ArrayLike = 0.1,
     ) -> Array:
+        """Sample predictive-process draws as an array.
+
+        Parameters
+        ----------
+        locs
+            Ordered sample and inducing-location variables.
+        n
+            Number of draws; ``1`` by default.
+        seed
+            JAX random seed; ``1`` by default, making repeated calls deterministic.
+        salt
+            Diagonal covariance jitter; ``1e-6`` by default.
+        amplitude
+            Initial GP amplitude.
+        length_scale
+            Initial GP length scale.
+
+        Returns
+        -------
+        samples :
+            Array with shape ``(n, N)`` for downstream simulation or numerical
+            summaries. Rows are independent draws and columns follow ``locs.ordered``.
+
+        Examples
+        --------
+        ```pycon
+        >>> from ppptm import GPVar, unit_grid_vars
+        >>> draws = GPVar.sample_array(unit_grid_vars(2), n=2, seed=7)
+        >>> assert draws.shape == (2, 4)
+        >>> assert (draws == GPVar.sample_array(unit_grid_vars(2), n=2, seed=7)).all()
+
+        ```
+        """
         amplitude = jnp.asarray(amplitude)
         length_scale = jnp.asarray(length_scale)
 

@@ -20,12 +20,62 @@ _IDENTITY_BIJECTOR = tfb.Identity()
 
 
 def brownian_motion_mat(nrows: int, ncols: int):
+    """Construct a Brownian-motion covariance matrix.
+
+    Parameters
+    ----------
+    nrows, ncols
+        Matrix dimensions.
+
+    Returns
+    -------
+    matrix :
+        Matrix whose entry ``(i, j)`` is ``min(i + 1, j + 1)``.
+
+    Examples
+    --------
+    ```pycon
+    >>> from ppptm.nodes.ppvar_rw import brownian_motion_mat
+    >>> brownian_motion_mat(2, 2).tolist()
+    [[1, 1], [1, 2]]
+
+    ```
+    """
     r = jnp.arange(nrows)[:, None] + 1
     c = jnp.arange(ncols)[None, :] + 1
     return jnp.minimum(r, c)
 
 
 def rw_weight_matrix(D: int):
+    """Construct the centered random-walk weight matrix for ``D`` coefficients.
+
+    Parameters
+    ----------
+    D
+        Number of transformation coefficients.
+
+    Returns
+    -------
+    weights :
+        Centered random-walk weight matrix with shape ``(D - 1, D - 2)``. Multiplying
+        unconstrained increments by this matrix produces sum-to-zero coefficients.
+
+    Notes
+    -----
+    ``D`` must be at least three for the Brownian covariance and Cholesky factor to
+    be nonempty.
+
+    Examples
+    --------
+    ```pycon
+    >>> import jax.numpy as jnp
+    >>> from ppptm.nodes.ppvar_rw import rw_weight_matrix
+    >>> weights = rw_weight_matrix(5)
+    >>> assert weights.shape == (4, 3)
+    >>> assert jnp.allclose(weights.sum(axis=0), 0.0, atol=1e-6)
+
+    ```
+    """
     C = jnp.eye(D - 1) - jnp.ones(D - 1) / (D - 1)
     B = brownian_motion_mat(D - 2, D - 2)
     L = jnp.linalg.cholesky(B, upper=False)
@@ -34,6 +84,50 @@ def rw_weight_matrix(D: int):
 
 
 class RandomWalkParamPredictiveProcessGP(lsl.Var):
+    """Spatial predictive-process coefficients with random-walk structure.
+
+    Parameters
+    ----------
+    gp_kernel
+        Kernel whose amplitude and length scale define spatial dependence.
+    locs
+        Ordered sample and inducing-location variables with shapes ``(N, d)`` and
+        ``(M, d)``.
+    nparam
+        Number ``D`` of random-walk coefficients at each location. ``D`` must be at
+        least three.
+    bijector
+        Reserved transformation applied to the coefficient process.
+    name
+        Liesel node name.
+    salt
+        Diagonal jitter added before Cholesky decomposition; ``1e-6`` by default.
+
+    Attributes
+    ----------
+    latent_var
+        Standard-normal latent variables at inducing locations.
+    Kuu, Kdu
+        Inducing-to-inducing and sample-to-inducing covariance nodes.
+
+    Notes
+    -----
+    Spatial projection and coefficient smoothing are separable: a predictive GP
+    projects ``M * D`` latent values to ``N`` locations, while a Brownian-motion
+    matrix couples the ``D`` coefficients. The resulting node has shape ``(N, D)``.
+
+    Examples
+    --------
+    ```pycon
+    >>> import tensorflow_probability.substrates.jax.math.psd_kernels as tfk
+    >>> from ppptm import GPKernel, RandomWalkParamPredictiveProcessGP, unit_grid_vars
+    >>> gp = RandomWalkParamPredictiveProcessGP(GPKernel(tfk.ExponentiatedQuadratic), unit_grid_vars(2), 3, name="gp")
+    >>> gp.value.shape
+    (4, 3)
+
+    ```
+    """
+
     def __init__(
         self,
         gp_kernel: GPKernel,
@@ -117,6 +211,43 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         amplitude: ArrayLike = 0.1,
         length_scale: ArrayLike = 0.1,
     ) -> pd.DataFrame:
+        """Sample random-walk predictive-process draws in long tabular form.
+
+        Parameters
+        ----------
+        locs
+            Ordered sample and inducing-location variables.
+        nparam
+            Number of coefficients at each location; ``5`` by default and at least
+            three.
+        n
+            Number of draws; ``1`` by default.
+        seed
+            JAX random seed; ``1`` by default, making repeated calls deterministic.
+        salt
+            Diagonal covariance jitter; ``1e-6`` by default.
+        amplitude
+            Initial GP amplitude.
+        length_scale
+            Initial GP length scale.
+
+        Returns
+        -------
+        samples :
+            Long data frame with ``n * N * nparam`` rows and columns ``lon``, ``lat``,
+            ``loc``, ``D``, ``sample``, and ``value``. It is useful for plotting
+            coefficient surfaces by index.
+
+        Examples
+        --------
+        ```pycon
+        >>> from ppptm import GPTMCoef, unit_grid_vars
+        >>> draws = GPTMCoef.sample_df(unit_grid_vars(2), nparam=3, n=2, seed=7)
+        >>> assert draws.shape == (24, 6)
+        >>> assert draws["D"].nunique() == 3
+
+        ```
+        """
         amplitude = jnp.asarray(amplitude)
         length_scale = jnp.asarray(length_scale)
 
@@ -156,6 +287,42 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         amplitude: ArrayLike = 0.1,
         length_scale: ArrayLike = 0.1,
     ) -> Array:
+        """Sample random-walk predictive-process draws as an array.
+
+        Parameters
+        ----------
+        locs
+            Ordered sample and inducing-location variables.
+        nparam
+            Number of coefficients at each location; ``5`` by default and at least
+            three.
+        n
+            Number of draws; ``1`` by default.
+        seed
+            JAX random seed; ``1`` by default, making repeated calls deterministic.
+        salt
+            Diagonal covariance jitter; ``1e-6`` by default.
+        amplitude
+            Initial GP amplitude.
+        length_scale
+            Initial GP length scale.
+
+        Returns
+        -------
+        samples :
+            Array with shape ``(n, N, nparam)``. Use it for simulation or numerical
+            summaries; its location axis follows ``locs.ordered``.
+
+        Examples
+        --------
+        ```pycon
+        >>> from ppptm import GPTMCoef, unit_grid_vars
+        >>> draws = GPTMCoef.sample_array(unit_grid_vars(2), nparam=3, n=2, seed=7)
+        >>> assert draws.shape == (2, 4, 3)
+        >>> assert (draws == GPTMCoef.sample_array(unit_grid_vars(2), nparam=3, n=2, seed=7)).all()
+
+        ```
+        """
         amplitude = jnp.asarray(amplitude)
         length_scale = jnp.asarray(length_scale)
 

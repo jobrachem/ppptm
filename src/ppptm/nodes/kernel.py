@@ -11,6 +11,51 @@ KernelFactory = Callable[..., tfk.PositiveSemidefiniteKernel]
 
 
 class GPKernel(lsl.Var):
+    """Liesel variable that evaluates a Gaussian-process covariance kernel.
+
+    Parameters
+    ----------
+    kernel
+        TensorFlow Probability positive-semidefinite kernel constructor.
+    amplitude
+        Scalar, length-``nloc`` array, or Liesel input. The covariance is multiplied
+        by the outer product of amplitudes; ``1.0`` by default.
+    length_scale
+        Positive scalar or length-``ndim`` vector controlling correlation range;
+        ``1.0`` by default. A vector enables automatic relevance determination.
+    x1, x2
+        Coordinates for covariance rows and columns. Omitted coordinates use a
+        one-row dummy array until replaced through ``new``. Their final feature
+        dimensions must match the length-scale dimension.
+    name
+        Liesel node name.
+
+    Attributes
+    ----------
+    amplitude
+        Covariance-amplitude input node.
+    length_scale
+        Covariance-length-scale input node.
+
+    Notes
+    -----
+    The wrapped TensorFlow Probability kernel is evaluated with unit amplitude and
+    feature scaling, then multiplied by ``outer(amplitude, amplitude)``. This permits
+    a different marginal scale at each location without triggering TFP's batch
+    semantics for array-valued amplitudes.
+
+    Examples
+    --------
+    ```pycon
+    >>> import jax.numpy as jnp
+    >>> import tensorflow_probability.substrates.jax.math.psd_kernels as tfk
+    >>> from ppptm import GPKernel
+    >>> GPKernel(tfk.ExponentiatedQuadratic, x1=jnp.zeros((2, 1)), x2=jnp.zeros((2, 1))).value.shape
+    (2, 2)
+
+    ```
+    """
+
     def __init__(
         self,
         kernel: KernelFactory,
@@ -71,6 +116,37 @@ class GPKernel(lsl.Var):
         amplitude: lsl.Var | lsl.Node | Array | None = None,
         length_scale: lsl.Var | lsl.Node | Array | None = None,
     ) -> GPKernel:
+        """Evaluate this kernel at new coordinates.
+
+        Parameters
+        ----------
+        x1, x2
+            Coordinates with shapes ``(nrow, ndim)`` and ``(ncol, ndim)``.
+        name
+            Name for the new Liesel node.
+        amplitude
+            Optional replacement amplitude. ``None`` reuses this node's input.
+        length_scale
+            Optional replacement length scale. ``None`` reuses this node's input.
+
+        Returns
+        -------
+        kernel :
+            New covariance node with shape ``(nrow, ncol)``. Use it to share kernel
+            hyperparameters across inducing and prediction covariance matrices.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> import tensorflow_probability.substrates.jax.math.psd_kernels as tfk
+        >>> from ppptm import GPKernel
+        >>> base = GPKernel(tfk.ExponentiatedQuadratic, length_scale=0.5)
+        >>> covariance = base.new(jnp.zeros((3, 2)), jnp.ones((2, 2)), name="K")
+        >>> assert covariance.value.shape == (3, 2)
+
+        ```
+        """
         amplitude = amplitude or self.amplitude
         length_scale = length_scale or self.length_scale
         kernel = GPKernel(
@@ -85,8 +161,32 @@ class GPKernel(lsl.Var):
 
     @property
     def amplitude(self):
+        """Covariance-amplitude input node shared by derived kernels.
+
+        Examples
+        --------
+        ```pycon
+        >>> import tensorflow_probability.substrates.jax.math.psd_kernels as tfk
+        >>> from ppptm import GPKernel
+        >>> float(GPKernel(tfk.ExponentiatedQuadratic, amplitude=2.0).amplitude.value)
+        2.0
+
+        ```
+        """
         return self.value_node["amplitude"]
 
     @property
     def length_scale(self):
+        """Covariance-length-scale input node shared by derived kernels.
+
+        Examples
+        --------
+        ```pycon
+        >>> import tensorflow_probability.substrates.jax.math.psd_kernels as tfk
+        >>> from ppptm import GPKernel
+        >>> float(GPKernel(tfk.ExponentiatedQuadratic, length_scale=0.5).length_scale.value)
+        0.5
+
+        ```
+        """
         return self.value_node["length_scale"]

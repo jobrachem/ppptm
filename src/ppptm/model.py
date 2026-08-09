@@ -224,6 +224,73 @@ class HDist(lsl.Dist):
 
 
 class Model:
+    """Penalized transformation model for observations at spatial locations.
+
+    Parameters
+    ----------
+    y
+        Two-dimensional response array with shape ``(nobs, nloc)``. Rows are
+        replicate fields and columns correspond to ``locs.sample_locs``.
+    locs
+        Ordered sample and inducing-location variables for the ``nloc`` locations.
+    knots
+        One-dimensional spline knot sequence. For the onion spline, its length and
+        the coefficient dimension must agree with the ``liesel-ptm`` construction.
+    coef
+        Optional spatial transformation coefficients. A default process is built
+        when omitted. Supply either a scalar identity coefficient or an array-valued
+        node with shape ``(nloc, D)``.
+    g_dist
+        Optional parametric Liesel marginal distribution. A Gaussian marginal is
+        built when omitted; in that case ``locscale`` is forced to ``True``.
+    to_float32
+        Whether to build the Liesel graph with float32 values.
+    bspline
+        Spline construction: ``"onion"`` by default or ``"identity"``.
+    locscale
+        Whether the transformation distribution includes location and scale.
+    mask_nan_response
+        Whether NaN responses are excluded from likelihood evaluation; ``False`` by
+        default. NaNs remain in ``response.value`` but contribute zero log density.
+    auto_update
+        Whether the Liesel graph updates automatically.
+
+    Attributes
+    ----------
+    response
+        Observed Liesel response variable.
+    graph
+        Underlying Liesel model graph.
+    coef
+        Transformation coefficient node.
+    g_dist
+        Parametric marginal distribution.
+
+    Raises
+    ------
+    ValueError
+        If response and coefficient nodes describe different numbers of locations,
+        or if NaN masking is requested with non-finite supplied marginal parameters.
+
+    Notes
+    -----
+    The model represents ``h(g(y))``: ``g`` is a parametric marginal transform and
+    ``h`` is an optional monotone spline transform. The graph retains location-wise
+    parameters and coefficients, so it can predict transformations at new locations
+    from posterior samples.
+
+    Examples
+    --------
+    ```pycon
+    >>> import jax.numpy as jnp
+    >>> from ppptm import Model, unit_grid_vars
+    >>> model = Model.new_G(jnp.ones((2, 4)), unit_grid_vars(2))
+    >>> model.response.value.shape
+    (2, 4)
+
+    ```
+    """
+
     def __init__(
         self,
         y: ArrayLike,
@@ -304,11 +371,60 @@ class Model:
         b: float = 7.0,
         nparam: int = 40,
         g_dist: lsl.Dist | None = None,
-        coef: SpatPTMCoef | None = None,
+        coef: SpatPTMCoef | lsl.Var | None = None,
         locscale: bool = False,
         mask_nan_response: bool = False,
         auto_update: bool = True,
     ) -> Model:
+        """Construct a model with an onion-spline transformation.
+
+        Parameters
+        ----------
+        y
+            Response array with shape ``(nobs, nloc)``.
+        locs
+            Ordered sample and inducing-location variables.
+        a, b
+            Lower and upper spline-knot bounds; ``-7.0`` and ``7.0`` by default.
+        nparam
+            Number of spatial transformation coefficients; ``40`` by default and at
+            least three.
+        g_dist
+            Optional parametric marginal distribution.
+        coef
+            Optional spatial predictive-process coefficients or a fixed Liesel
+            variable with shape ``(nloc, nparam)``. Omitted coefficients are built
+            with ``H``.
+        locscale
+            Whether the transformation includes location and scale.
+        mask_nan_response
+            Whether NaN response entries are masked.
+        auto_update
+            Whether the Liesel graph updates automatically.
+
+        Returns
+        -------
+        model :
+            Fully constructed ``h(g(y))`` model with response shape
+            ``(nobs, nloc)`` and coefficient shape ``(nloc, nparam)``. Fit it with
+            ``fit`` or use its transformation methods directly.
+
+        Raises
+        ------
+        ValueError
+            If the supplied coefficient and response location counts differ.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> model = Model.new_HG(jnp.arange(8.0).reshape(2, 4), unit_grid_vars(2), nparam=4)
+        >>> assert model.response.value.shape == (2, 4)
+        >>> assert model.spatial_coef.value.shape == (4, 4)
+
+        ```
+        """
         knots = OnionKnots(a=a, b=b, nparam=nparam)
 
         model = cls(
@@ -334,6 +450,49 @@ class Model:
         mask_nan_response: bool = False,
         auto_update: bool = True,
     ) -> Model:
+        """Construct a model with the identity spline and no spatial coefficients.
+
+        Parameters
+        ----------
+        y
+            Response array with shape ``(nobs, nloc)``.
+        locs
+            Ordered sample and inducing-location variables.
+        g_dist
+            Optional parametric marginal distribution.
+        locscale
+            Whether a supplied marginal distribution is treated as location-scale;
+            ``False`` by default. When ``g_dist`` is omitted, the default Gaussian
+            forces this behavior on.
+        mask_nan_response
+            Whether NaN response entries are masked.
+        auto_update
+            Whether the Liesel graph updates automatically.
+
+        Returns
+        -------
+        model :
+            Model containing only the parametric marginal transformation ``g``. Use
+            it when a flexible spline term is unnecessary or as a baseline against
+            ``new_HG``.
+
+        Raises
+        ------
+        ValueError
+            If the response and location counts are incompatible through supplied
+            distribution parameters.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> model = Model.new_G(jnp.arange(8.0).reshape(2, 4), unit_grid_vars(2))
+        >>> assert model.response.value.shape == (2, 4)
+        >>> assert model.D == 0
+
+        ```
+        """
         knots = OnionKnots(a=-1.0, b=1.0, nparam=3)
         coef = lsl.Var.new_value(jnp.array(0.0), name="coef")
 
@@ -352,10 +511,47 @@ class Model:
 
     @property
     def parameters(self):
+        """List names of trainable Liesel parameters in the model graph.
+
+        The list is useful for inspecting optimizer state or selecting posterior
+        samples. A ``new_G`` model has marginal parameters only; ``new_HG`` also has
+        coefficient-process parameters.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> model = Model.new_G(jnp.arange(8.0).reshape(2, 4), unit_grid_vars(2))
+        >>> assert "loc_latent" in model.parameters
+
+        ```
+        """
         return list(self.graph.parameters)
 
     @property
     def spatial_coef(self) -> SpatPTMCoef:
+        """Return the spatial spline coefficient node of an ``h(g(y))`` model.
+
+        The node has shape ``(nloc, D)`` and exposes its kernel hyperparameters and
+        latent variables for inspection or prior configuration.
+
+        Raises
+        ------
+        TypeError
+            If this is a ``new_G`` model without spatial coefficients.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> model = Model.new_HG(jnp.arange(8.0).reshape(2, 4), unit_grid_vars(2), nparam=4)
+        >>> model.spatial_coef.value.shape
+        (4, 4)
+
+        ```
+        """
         if not isinstance(self.coef, SpatPTMCoef):
             raise TypeError("This model does not have spatial coefficients.")
         return self.coef
@@ -432,7 +628,9 @@ class Model:
         -------
         liesel.optim.state.OptimResult
             Optimization result returned by Liesel. The model graph is updated to
-            ``result.best_position`` before returning.
+            ``result.best_position`` before returning, so subsequent transformations
+            use the best fitted parameters. History retention is controlled by
+            ``save_position_history``.
 
         Raises
         ------
@@ -441,6 +639,21 @@ class Model:
             invalid, or location batching fails because a location-shaped component
             is fixed at the full number of locations instead of being scalar or
             derived from ``sample_locs``.
+        TypeError
+            If ``batch_size`` is not an integer or ``None``.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> model = Model.new_G(jnp.arange(8.0).reshape(2, 4), unit_grid_vars(2))
+        >>> model.fit(batch_size=0)
+        Traceback (most recent call last):
+        ...
+        ValueError: batch_size must be a positive integer or None.
+
+        ```
         """
         _validate_location_batch_size(batch_size, self.nloc, shuffle_batches)
         _validate_progress_n_updates(progress_n_updates)
@@ -558,6 +771,42 @@ class Model:
         samples: dict[str, Array] | None = None,
         newdata: dict[str, ArrayLike] | None = None,
     ) -> PTMDist:
+        """Initialize the transformation distribution at model or posterior values.
+
+        Parameters
+        ----------
+        samples
+            Optional posterior parameter samples. Leading sample dimensions are
+            preserved in the returned distribution. Values should come from this
+            model's graph so their trailing dimensions match model parameters.
+        newdata
+            Optional replacement graph inputs; requires ``samples``. To predict at
+            new locations, provide ``{"sample_locs": array}`` with shape
+            ``(nloc_new, ndim)``.
+
+        Returns
+        -------
+        distribution :
+            Transformation distribution evaluated at model parameters or posterior
+            samples. Use it for lower-level transformation, inversion, or density
+            operations not exposed by the convenience methods.
+
+        Raises
+        ------
+        ValueError
+            If ``newdata`` is provided without posterior samples.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> model = Model.new_G(jnp.arange(8.0).reshape(2, 4), unit_grid_vars(2))
+        >>> distribution = model.init_dist()
+        >>> assert hasattr(distribution, "transformation_and_logdet")
+
+        ```
+        """
         if samples is None and newdata is not None:
             raise ValueError("newdata requires posterior samples.")
 
@@ -651,6 +900,44 @@ class Model:
         samples: dict[str, Array] | None = None,
         newdata: dict[str, ArrayLike] | None = None,
     ) -> Array:
+        """Apply the parametric marginal transformation.
+
+        Parameters
+        ----------
+        y
+            Response values with locations along the final axis: scalar, ``(nloc,)``,
+            or ``(..., nloc)``.
+        samples
+            Optional posterior parameter samples with arbitrary leading sample shape.
+        newdata
+            Optional replacement graph inputs used with ``samples``. Providing it
+            without ``samples`` raises ``ValueError``.
+
+        Returns
+        -------
+        transformed :
+            Values on the reference distribution's input scale. Without samples the
+            input shape is preserved (a scalar broadcasts to ``(nloc,)``); with
+            sample shape ``S``, the result has shape ``S + input.shape``.
+
+        Notes
+        -----
+        ``g`` isolates the parametric marginal transform, which is useful for
+        diagnosing whether non-Gaussian behavior is handled by ``G`` before applying
+        the spline component.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> model = Model.new_G(jnp.arange(8.0).reshape(2, 4), unit_grid_vars(2))
+        >>> transformed = model.g(jnp.arange(4.0))
+        >>> assert transformed.shape == (4,)
+        >>> assert jnp.allclose(model.gi(transformed), jnp.arange(4.0), atol=1e-4)
+
+        ```
+        """
         return self._public_transform(
             y,
             samples,
@@ -664,6 +951,41 @@ class Model:
         samples: dict[str, Array] | None = None,
         newdata: dict[str, ArrayLike] | None = None,
     ) -> Array:
+        """Invert the parametric marginal transformation.
+
+        Parameters
+        ----------
+        yt
+            Parametrically transformed values with locations along the final axis:
+            scalar, ``(nloc,)``, or ``(..., nloc)``.
+        samples
+            Optional posterior parameter samples with arbitrary leading sample shape.
+        newdata
+            Optional replacement graph inputs used with ``samples``. Providing it
+            without ``samples`` raises ``ValueError``.
+
+        Returns
+        -------
+        values :
+            Values on the original response scale. Without samples the input shape
+            is preserved; posterior sample dimensions are prepended when supplied.
+
+        Notes
+        -----
+        ``gi`` is the inverse of ``g`` up to numerical tolerance and supports
+        simulation from the chosen parametric marginal.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> model = Model.new_G(jnp.arange(8.0).reshape(2, 4), unit_grid_vars(2))
+        >>> y = jnp.arange(4.0)
+        >>> assert jnp.allclose(model.gi(model.g(y)), y, atol=1e-4)
+
+        ```
+        """
         return self._public_transform(
             yt,
             samples,
@@ -677,6 +999,42 @@ class Model:
         samples: dict[str, Array] | None = None,
         newdata: dict[str, ArrayLike] | None = None,
     ) -> Array:
+        """Apply the spline component of the transformation.
+
+        Parameters
+        ----------
+        yt
+            Parametrically transformed values with locations along the final axis:
+            scalar, ``(nloc,)``, or ``(..., nloc)``.
+        samples
+            Optional posterior parameter samples with arbitrary leading sample shape.
+        newdata
+            Optional replacement graph inputs used with ``samples``. Providing it
+            without ``samples`` raises ``ValueError``.
+
+        Returns
+        -------
+        transformed :
+            Values on the spline's output scale. Without samples the input shape is
+            preserved; posterior sample dimensions are prepended when supplied.
+
+        Notes
+        -----
+        ``h`` isolates the monotone spline transformation and is useful for
+        inspecting the nonparametric correction learned beyond the marginal ``g``.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> model = Model.new_HG(jnp.arange(8.0).reshape(2, 4), unit_grid_vars(2), nparam=4)
+        >>> transformed = model.h(jnp.arange(4.0))
+        >>> assert transformed.shape == (4,)
+        >>> assert jnp.allclose(model.hi(transformed), jnp.arange(4.0), atol=1e-4)
+
+        ```
+        """
         return self._public_transform(
             yt,
             samples,
@@ -690,6 +1048,42 @@ class Model:
         samples: dict[str, Array] | None = None,
         newdata: dict[str, ArrayLike] | None = None,
     ) -> Array:
+        """Invert the spline component of the transformation.
+
+        Parameters
+        ----------
+        zt
+            Spline-transformed values with locations along the final axis: scalar,
+            ``(nloc,)``, or ``(..., nloc)``.
+        samples
+            Optional posterior parameter samples with arbitrary leading sample shape.
+        newdata
+            Optional replacement graph inputs used with ``samples``. Providing it
+            without ``samples`` raises ``ValueError``.
+
+        Returns
+        -------
+        values :
+            Values on the parametric-transformation scale. Without samples the input
+            shape is preserved; posterior sample dimensions are prepended when
+            supplied.
+
+        Notes
+        -----
+        ``hi`` is the numerical inverse of ``h`` and is used during generative
+        sampling after drawing on the transformed scale.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> model = Model.new_HG(jnp.arange(8.0).reshape(2, 4), unit_grid_vars(2), nparam=4)
+        >>> yt = jnp.arange(4.0)
+        >>> assert jnp.allclose(model.hi(model.h(yt)), yt, atol=1e-4)
+
+        ```
+        """
         return self._public_transform(
             zt,
             samples,
@@ -703,6 +1097,43 @@ class Model:
         samples: dict[str, Array] | None = None,
         newdata: dict[str, ArrayLike] | None = None,
     ) -> Array:
+        """Apply the full spline and parametric transformation.
+
+        Parameters
+        ----------
+        y
+            Response values with locations along the final axis: scalar, ``(nloc,)``,
+            or ``(..., nloc)``.
+        samples
+            Optional posterior parameter samples with arbitrary leading sample shape.
+        newdata
+            Optional replacement graph inputs used with ``samples``. Providing it
+            without ``samples`` raises ``ValueError``.
+
+        Returns
+        -------
+        transformed :
+            Values on the final reference scale. Without samples the input shape is
+            preserved; posterior sample dimensions are prepended when supplied.
+
+        Notes
+        -----
+        This is the forward composition ``h(g(y))`` used before dependence modeling.
+        It is the main diagnostic transform for checking whether fitted marginals are
+        close to the reference distribution.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> model = Model.new_HG(jnp.arange(8.0).reshape(2, 4), unit_grid_vars(2), nparam=4)
+        >>> transformed = model.hg(jnp.arange(4.0))
+        >>> assert transformed.shape == (4,)
+        >>> assert jnp.allclose(model.hgi(transformed), jnp.arange(4.0), atol=1e-4)
+
+        ```
+        """
         return self._public_transform(
             y,
             samples,
@@ -716,6 +1147,41 @@ class Model:
         samples: dict[str, Array] | None = None,
         newdata: dict[str, ArrayLike] | None = None,
     ) -> Array:
+        """Invert the full spline and parametric transformation.
+
+        Parameters
+        ----------
+        zt
+            Fully transformed values with locations along the final axis: scalar,
+            ``(nloc,)``, or ``(..., nloc)``.
+        samples
+            Optional posterior parameter samples with arbitrary leading sample shape.
+        newdata
+            Optional replacement graph inputs used with ``samples``. Providing it
+            without ``samples`` raises ``ValueError``.
+
+        Returns
+        -------
+        values :
+            Values on the original response scale. Without samples the input shape
+            is preserved; posterior sample dimensions are prepended when supplied.
+
+        Notes
+        -----
+        ``hgi`` applies ``gi(hi(zt))`` conceptually and is the final step when turning
+        transformed Gaussian/dependence-model draws into observations.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> model = Model.new_HG(jnp.arange(8.0).reshape(2, 4), unit_grid_vars(2), nparam=4)
+        >>> y = jnp.arange(4.0)
+        >>> assert jnp.allclose(model.hgi(model.hg(y)), y, atol=1e-4)
+
+        ```
+        """
         return self._public_transform(
             zt, samples, newdata, lambda dist, value: dist.inverse_transformation(value)
         )
@@ -726,6 +1192,46 @@ class Model:
         samples: dict[str, Array] | None = None,
         newdata: dict[str, ArrayLike] | None = None,
     ) -> Array:
+        """Evaluate model log probabilities, masking configured NaN responses.
+
+        Parameters
+        ----------
+        y
+            Response values with locations along the final axis: scalar, ``(nloc,)``,
+            or ``(..., nloc)``.
+        samples
+            Optional posterior parameter samples with arbitrary leading sample shape.
+        newdata
+            Optional replacement graph inputs used with ``samples``. Providing it
+            without ``samples`` raises ``ValueError``.
+
+        Returns
+        -------
+        log_probability :
+            Per-value log probabilities. Without samples the input shape is preserved
+            (a scalar broadcasts to ``(nloc,)``); with sample shape ``S``, the result
+            has shape ``S + input.shape``. Sum over observation and location axes for
+            a joint conditional log likelihood.
+
+        Notes
+        -----
+        When ``mask_nan_response=True``, NaN entries are replaced safely for
+        evaluation and returned with log probability zero. Other non-finite values
+        are not masked.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> y = jnp.arange(8.0).reshape(2, 4).at[0, 0].set(jnp.nan)
+        >>> model = Model.new_G(y, unit_grid_vars(2), mask_nan_response=True)
+        >>> log_prob = model.log_prob(y)
+        >>> assert log_prob.shape == y.shape
+        >>> assert log_prob[0, 0] == 0.0
+
+        ```
+        """
         return self._public_transform(
             y,
             samples,
