@@ -244,6 +244,7 @@ class CompositeTransformations:
         key: jax.Array,
         n: int,
         fixed_y: jax.typing.ArrayLike | None = None,
+        newdata: dict[str, ArrayLike] | None = None,
     ) -> jax.Array:
         """Sample fields from the fitted composite model.
 
@@ -316,6 +317,6 @@ class CompositeTransformations:
             )
             zt = zt.numpy()
 
-        y = self.marginal.hgi(zt)
+        y = self.marginal.hgi(zt, newdata=newdata)
 
         return y
