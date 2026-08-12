@@ -60,10 +60,10 @@ Install the development and documentation environments, then run the checks:
 uv sync --group dev --group docs
 uv run pytest
 uv run pytest --doctest-modules src/ppptm
-uv run mkdocs build --strict
+uv run --group docs zensical build --clean --strict
 ```
 
-Use `uv run mkdocs serve` for a local documentation preview.
+Use `uv run --group docs zensical serve` for a local documentation preview.
 
 ## Provenance
 

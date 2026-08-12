@@ -48,10 +48,8 @@ dev = [
     "ruff>=0.16.2",
 ]
 docs = [
-    "mkdocs>=1.6.1",
-    "mkdocs-material>=9.7.7",
     "mkdocstrings[python]>=1.0.6",
-    "pymdown-extensions>=11.0.1",
+    "zensical>=0.0.53",
 ]
 
 # Hatch configuration to pull the version from ppptm/__about__.py
