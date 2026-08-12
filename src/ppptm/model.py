@@ -814,41 +814,75 @@ class Model:
             assert self.response.dist_node is not None
             return cast(HDist, self.response.dist_node).init_base_dist()
 
+        assert self.response.dist_node is not None
+        dist_node = cast(HDist, self.response.dist_node)
         sample_shape = self._sample_shape(samples)
-        predict = []
-        pred = {}
-        coef_dynamic = isinstance(self.coef, SpatPTMCoef) or self.coef.name in samples
-        if coef_dynamic:
-            predict.append(self.coef.name)
-            coef = None
-        else:
-            coef = self.coef.value
 
-        kwargs_G = {}
-        for param_name, param in self.g_dist.kwinputs.items():
-            if not getattr(param.var, "parameter_names", None):
-                value = jnp.asarray(param.value)
-                kwargs_G[param_name] = jnp.broadcast_to(
-                    value, sample_shape + value.shape
+        if not sample_shape:
+            overlap = set(samples).intersection(newdata or {})
+            if overlap:
+                raise RuntimeError(
+                    f"The following keys are present in both 'samples' and "
+                    f"'newdata': {list(overlap)}"
                 )
+
+            state = self.graph.update_state(samples | (newdata or {}))
+            inputs = {
+                name: state[
+                    node.var.value_node.name if node.var is not None else node.name
+                ].value
+                for name, node in dist_node.kwinputs.items()
+            }
+            return dist_node.partial_dist_class(**inputs)
+
+        inputs = {}
+        predict = {}
+        fixed = {}
+
+        for input_name, node in dist_node.kwinputs.items():
+            parents = self.graph.node_parental_subgraph(node)
+            parent_names = {parent.name for parent in parents}
+            parent_names.update(
+                parent.var.name for parent in parents if parent.var is not None
+            )
+            target = node.var.name if node.var is not None else node.name
+
+            if parent_names.intersection(samples):
+                predict[input_name] = target
             else:
-                predict.append(param_name)
+                fixed[input_name] = node
+
+        if fixed:
+            submodel = self.graph.parental_submodel(*fixed.values())
+            fixed_newdata = {
+                name: value
+                for name, value in (newdata or {}).items()
+                if name in submodel.vars
+            }
+            state = submodel.update_state(submodel.convert_position(fixed_newdata))
+
+            for input_name, node in fixed.items():
+                state_name = (
+                    node.var.value_node.name if node.var is not None else node.name
+                )
+                value = jnp.asarray(state[state_name].value)
+                inputs[input_name] = (
+                    value
+                    if input_name == "coef" and value.ndim == 0
+                    else jnp.broadcast_to(value, sample_shape + value.shape)
+                )
 
         if predict:
             pred = self.graph.predict(
-                samples=cast(Any, samples), predict=predict, newdata=newdata
+                samples=cast(Any, samples),
+                predict=list(dict.fromkeys(predict.values())),
+                newdata=newdata,
             )
-            if coef is None:
-                coef = pred[self.coef.name]
-            for param_name in self.g_dist.kwinputs:
-                if param_name in pred:
-                    kwargs_G[param_name] = pred[param_name]
+            inputs.update(
+                {input_name: pred[target] for input_name, target in predict.items()}
+            )
 
-        assert coef is not None
-        if jnp.ndim(self.coef.value) > 0 and not coef_dynamic:
-            coef = jnp.broadcast_to(jnp.asarray(coef), sample_shape + jnp.shape(coef))
-
-        return self.dist_node.partial_dist_class(coef=coef, **kwargs_G)
+        return dist_node.partial_dist_class(**inputs)
 
     def _sample_shape(self, samples: dict[str, Array]) -> tuple[int, ...]:
         for name, value in samples.items():

@@ -225,6 +225,78 @@ def test_identity_posterior_values_and_axis_order():
     assert jnp.array_equal(result, expected_log_prob)
 
 
+def test_replaced_distribution_input_matches_graph_likelihood():
+    model = gptm.Model.new_G(RESPONSE, gptm.unit_grid_vars(ngrid=2))
+    response_dist = model.response.dist_node
+    assert response_dist is not None
+
+    covariate = lsl.Var.new_obs(jnp.zeros(4), name="covariate")
+    effect = lsl.Var.new_param(jnp.array(0.0), name="covariate_effect")
+    loc_predictor = lsl.Var(
+        lsl.Calc(
+            lambda loc, x, beta: loc + x * beta,
+            response_dist["loc"],
+            covariate,
+            effect,
+        ),
+        name="loc_predictor",
+    )
+    response_dist["loc"] = loc_predictor
+
+    samples = {
+        name: jnp.broadcast_to(var.value, (2,) + jnp.shape(var.value))
+        for name, var in model.graph.parameters.items()
+    }
+    samples[effect.name] = jnp.array([0.0, 1.0])
+    newdata = {covariate.name: jnp.ones(4)}
+
+    actual = model.log_prob(RESPONSE, samples=samples, newdata=newdata).sum(
+        axis=(-2, -1)
+    )
+    expected = jnp.stack(
+        [
+            model.graph.update_state(
+                {name: value[i] for name, value in samples.items()} | newdata
+            )["_model_log_lik"].value
+            for i in range(2)
+        ]
+    )
+
+    assert jnp.allclose(actual, expected)
+
+
+def test_unbatched_position_matches_graph_likelihood_exactly():
+    response = jnp.linspace(0.1, 1.2, 48).reshape(3, 16)
+    model = gptm.Model.new_G(response, gptm.unit_grid_vars(ngrid=4))
+    response_dist = model.response.dist_node
+    assert response_dist is not None
+
+    covariate = lsl.Var.new_obs(jnp.zeros(16), name="covariate")
+    effect = lsl.Var.new_param(jnp.array(0.0), name="covariate_effect")
+    loc_predictor = lsl.Var(
+        lsl.Calc(
+            lambda loc, x, beta: loc + x * beta,
+            response_dist["loc"],
+            covariate,
+            effect,
+        ),
+        name="loc_predictor",
+    )
+    response_dist["loc"] = loc_predictor
+
+    position = {name: var.value for name, var in model.graph.parameters.items()}
+    for name, value in position.items():
+        if "latent" in name:
+            position[name] = jnp.linspace(-0.2, 0.2, value.size).reshape(value.shape)
+    position[effect.name] = jnp.array(1.0)
+    newdata = {covariate.name: jnp.ones(16)}
+
+    state = model.graph.update_state(position | newdata)
+    actual = model.log_prob(response, samples=position, newdata=newdata).sum()
+
+    assert jnp.array_equal(actual, state["_model_log_lik"].value)
+
+
 NEW_LOCATION_CASES = tuple(
     pytest.param(
         configuration,
