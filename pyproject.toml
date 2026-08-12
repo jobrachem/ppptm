@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "liesel @ git+https://github.com/liesel-devs/liesel.git@optim-devel",
+    "liesel",
     "liesel-ptm",
     "batram @ git+https://github.com/katzfuss-group/batram.git",
     "plotnine"
@@ -97,3 +97,4 @@ allow-direct-references = true
 
 [tool.uv.sources]
 liesel-ptm = { path = "../liesel-ptm", editable = true }
+liesel = { path = "../liesel", editable = true }
