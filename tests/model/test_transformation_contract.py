@@ -1,9 +1,12 @@
+from math import prod
+
 import jax.numpy as jnp
 import liesel.model as lsl
 import liesel_ptm as ptm
 import pytest
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.random import key
+from jax.typing import ArrayLike
 from liesel_ptm.dist import PseudoTransformationDist
 
 import ppptm as gptm
@@ -519,7 +522,7 @@ def test_onion_migration_goldens(model_for, locscale):
 def test_spline_normalization_flags(constructor, centered, scaled):
     locations = gptm.unit_grid_vars(ngrid=2)
     params = {
-        name: jnp.full(4, value)
+        name: jnp.asarray(value)
         for name, value in {
             "loc": 0.2,
             "scale": 1.1,
@@ -620,3 +623,77 @@ def test_spline_normalization_flags(constructor, centered, scaled):
             assert jnp.allclose(
                 predicted_log_prob[i], reference.log_prob(RESPONSE), atol=2e-5
             )
+
+
+@pytest.mark.parametrize("configuration", CONFIGURATIONS, ids=_configuration_id)
+@pytest.mark.parametrize("sample_shape", [(2,), (4,), (2, 3)])
+def test_scalar_parameters_keep_posterior_and_location_axes(
+    configuration, sample_shape
+):
+    spline, locscale = configuration
+    locations = gptm.unit_grid_vars(ngrid=2)
+    loc = lsl.Var.new_param(jnp.array(0.2), name="shared_loc")
+    g_dist = lsl.Dist(tfd.Normal, loc=loc, scale=jnp.array(1.1))
+    if spline == "onion":
+        model = gptm.Model.new_HG(
+            RESPONSE,
+            locations,
+            nparam=4,
+            g_dist=g_dist,
+            locscale=locscale,
+            coef=lsl.Var.new_value(ONION_COEF, name="coef"),
+        )
+    else:
+        model = gptm.Model.new_G(RESPONSE, locations, g_dist=g_dist, locscale=locscale)
+
+    count = prod(sample_shape)
+    samples = {"shared_loc": jnp.linspace(-0.5, 0.7, count).reshape(sample_shape)}
+    if spline == "onion":
+        samples["coef"] = jnp.broadcast_to(ONION_COEF, sample_shape + ONION_COEF.shape)
+
+    # Independent reference: explicitly place observations and locations after draws.
+    reference_coef = (
+        samples["coef"][..., None, :, :] if spline == "onion" else jnp.array(0.0)
+    )
+    reference = model.dist_node.partial_dist_class(
+        coef=reference_coef,
+        loc=samples["shared_loc"][..., None, None],
+        scale=1.1,
+    )
+    expected = reference.log_prob(RESPONSE)
+    actual = model.log_prob(RESPONSE, samples=samples)
+    assert actual.shape == sample_shape + RESPONSE.shape
+    assert jnp.allclose(actual, expected, atol=2e-5)
+    transformed = model.hg(RESPONSE, samples=samples)
+    assert transformed.shape == actual.shape
+    assert jnp.allclose(
+        transformed, reference.transformation_and_logdet(RESPONSE)[0], atol=2e-5
+    )
+
+
+def test_scalar_posterior_with_location_parameters_and_new_locations():
+    locations = gptm.unit_grid_vars(ngrid=2)
+    loc = lsl.Var.new_param(jnp.array(0.2), name="shared_loc")
+    scale = lsl.Var(
+        lsl.Calc(lambda x: 1.0 + 0.3 * x[:, 0], locations.sample_locs), name="scale"
+    )
+    model = gptm.Model.new_G(
+        RESPONSE,
+        locations,
+        g_dist=lsl.Dist(tfd.Normal, loc=loc, scale=scale),
+        locscale=True,
+    )
+    samples = {"shared_loc": jnp.array([-0.3, 0.7])}
+    # Existing and replacement locations must retain their own final axis.
+    for coordinates, response in [
+        (locations.sample_locs.value, RESPONSE),
+        (NEW_LOCATIONS, NEW_RESPONSE),
+    ]:
+        newdata: dict[str, ArrayLike] = {"sample_locs": coordinates}
+        expected = tfd.Normal(
+            loc=samples["shared_loc"][:, None, None],
+            scale=1.0 + 0.3 * coordinates[:, 0],
+        ).log_prob(response)
+        actual = model.log_prob(response, samples=samples, newdata=newdata)
+        assert actual.shape == (2,) + response.shape
+        assert jnp.allclose(actual, expected, atol=2e-5)

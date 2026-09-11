@@ -806,6 +806,8 @@ class Model:
             Optional posterior parameter samples. Leading sample dimensions are
             preserved in the returned distribution. Values should come from this
             model's graph so their trailing dimensions match model parameters.
+            Shared scalar distribution parameters receive a trailing singleton
+            location axis, keeping posterior draws separate from locations.
         newdata
             Optional replacement graph inputs; requires ``samples``. To predict at
             new locations, provide ``{"sample_locs": array}`` with shape
@@ -908,6 +910,12 @@ class Model:
             inputs.update(
                 {input_name: pred[target] for input_name, target in predict.items()}
             )
+
+        # Shared scalar parameters still need a location axis after posterior axes.
+        # Coefficients retain their (location, basis) axes or scalar identity sentinel.
+        for input_name, value in inputs.items():
+            if input_name != "coef" and jnp.ndim(value) == len(sample_shape):
+                inputs[input_name] = jnp.expand_dims(value, axis=-1)
 
         return dist_node.partial_dist_class(**inputs)
 
