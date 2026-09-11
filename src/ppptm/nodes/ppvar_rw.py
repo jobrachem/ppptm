@@ -113,8 +113,10 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
     Notes
     -----
     Spatial projection and coefficient smoothing are separable: a predictive GP
-    projects ``M * D`` latent values to ``N`` locations, while a Brownian-motion
-    matrix couples the ``D`` coefficients. The resulting node has shape ``(N, D)``.
+    projects ``M * D`` latent values to ``N`` locations, while the Cholesky factor
+    ``W`` of the Brownian-motion covariance ``S[i, j] = min(i + 1, j + 1)`` couples
+    the ``D`` coefficients. Here ``W`` is lower triangular with entries of one,
+    so ``W @ W.T = S``. The resulting node has shape ``(N, D)``.
 
     Examples
     --------
@@ -153,7 +155,7 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
             name=f"{name}_Kdu",
         ).update()
 
-        W = brownian_motion_mat(D, D)
+        W = jnp.tril(jnp.ones((D, D)))  # Exact Cholesky factor of Brownian covariance.
 
         n_inducing_locs = Kuu.value.shape[0]
         M = n_inducing_locs
@@ -170,7 +172,7 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
             Kuu: (M, M)
             Kdu: (N, M)
 
-            Returns: (N,)
+            Returns: (N, D)
             """
             Kuu = Kuu.at[jnp.diag_indices(M)].add(salt)
             L = jnp.linalg.cholesky(Kuu)  # (M x M)

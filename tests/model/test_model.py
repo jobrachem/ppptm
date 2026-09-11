@@ -1,6 +1,8 @@
+import jax
 import jax.numpy as jnp
 import liesel.model as lsl
 import pytest
+import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.random import key, normal
 from liesel import optim as loptim
 
@@ -287,3 +289,43 @@ class TestModel:
         )
 
         assert_fit_result_is_finite(model, result)
+
+
+def test_coefficient_gp_likelihood_gradients():
+    locations = gptm.unit_grid_vars(ngrid=2, n_subset=3)
+    coef = gptm.H(locations, nparam=8).new_coef()
+    response = jnp.linspace(-2.0, 2.5, 20).reshape(5, 4)
+    g_dist = lsl.Dist(tfd.TwoPieceStudentT, df=8.0, loc=0.0, scale=1.0, skewness=1.3)
+    model = gptm.Model.new_HG(
+        response, locations, nparam=8, coef=coef, g_dist=g_dist, locscale=False
+    )
+    position = {name: var.value for name, var in model.graph.parameters.items()}
+    position["coef_latent"] = jnp.linspace(-0.3, 0.4, 24)
+    assert model.spatial_coef.value.shape == (4, 8)
+
+    def log_likelihood(params):
+        return model.log_prob(response, samples=params).sum()
+
+    value, gradients = jax.jit(jax.value_and_grad(log_likelihood))(position)
+    assert jnp.isfinite(value)
+    assert jnp.allclose(value, log_likelihood(position), rtol=1e-5)
+    for name in (
+        "coef_latent",
+        "coef_amplitude_transformed",
+        "coef_length_scale_transformed",
+    ):
+        assert jnp.all(jnp.isfinite(gradients[name]))
+        assert jnp.linalg.norm(gradients[name]) > 1e-6
+
+    for data in (response, response[:2]):
+        log_prob = model.log_prob(data, samples=position)
+        assert log_prob.shape == data.shape
+        assert jnp.all(jnp.isfinite(log_prob))
+        state = model.graph.update_state(position | {"response": data})
+        assert jnp.allclose(log_prob.sum(), state["_model_log_lik"].value)
+
+    grid = jnp.broadcast_to(jnp.linspace(-5.0, 5.0, 101)[:, None], (101, 4))
+    transformed = jax.jit(lambda p: model.hg(grid, samples=p))(position)
+    assert transformed.shape == grid.shape
+    assert jnp.all(jnp.isfinite(transformed))
+    assert jnp.all(jnp.diff(transformed, axis=0) > 0.0)
