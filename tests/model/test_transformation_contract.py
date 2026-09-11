@@ -1,8 +1,10 @@
 import jax.numpy as jnp
 import liesel.model as lsl
+import liesel_ptm as ptm
 import pytest
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.random import key
+from liesel_ptm.dist import PseudoTransformationDist
 
 import ppptm as gptm
 
@@ -508,3 +510,113 @@ def test_onion_migration_goldens(model_for, locscale):
     for surface, expected in ONION_GOLDENS.items():
         result = _call_public_surface(model, surface, ONION_GOLDEN_VALUES)
         assert jnp.allclose(result, expected, atol=2e-5, rtol=0.0)
+
+
+@pytest.mark.parametrize("constructor", ["direct", "new_HG", "new_G"])
+@pytest.mark.parametrize(
+    "centered,scaled", [(False, False), (True, False), (False, True), (True, True)]
+)
+def test_spline_normalization_flags(constructor, centered, scaled):
+    locations = gptm.unit_grid_vars(ngrid=2)
+    params = {
+        name: jnp.full(4, value)
+        for name, value in {
+            "loc": 0.2,
+            "scale": 1.1,
+            "skewness": 1.3,
+            "df": 8.0,
+        }.items()
+    }
+    g_dist = lsl.Dist(
+        tfd.TwoPieceStudentT,
+        loc=params["loc"],
+        scale=params["scale"],
+        skewness=params["skewness"],
+        df=params["df"],
+    )
+    response = RESPONSE.at[0, 0].set(jnp.nan)
+    knots = ptm.OnionKnots(a=-7.0, b=7.0, nparam=4)
+    if constructor == "new_G":
+        model = gptm.Model.new_G(
+            response,
+            locations,
+            g_dist=g_dist,
+            centered=centered,
+            scaled=scaled,
+            mask_nan_response=True,
+        )
+        expected = PseudoTransformationDist(
+            coef=jnp.array(0.0),
+            parametric_distribution=tfd.TwoPieceStudentT,
+            centered=centered,
+            scaled=scaled,
+            loc=params["loc"],
+            scale=params["scale"],
+            skewness=params["skewness"],
+            df=params["df"],
+        )
+    else:
+        coef = lsl.Var.new_value(ONION_COEF, name="coef")
+        if constructor == "direct":
+            model = gptm.Model(
+                response,
+                locations,
+                knots=knots.knots,
+                coef=coef,
+                g_dist=g_dist,
+                centered=centered,
+                scaled=scaled,
+                mask_nan_response=True,
+            )
+        else:
+            model = gptm.Model.new_HG(
+                response,
+                locations,
+                nparam=4,
+                coef=coef,
+                g_dist=g_dist,
+                centered=centered,
+                scaled=scaled,
+                mask_nan_response=True,
+            )
+        expected = ptm.onion_dist(
+            knots=knots.knots,
+            loc_scale=False,
+            parametric_distribution=tfd.TwoPieceStudentT,
+            centered=centered,
+            scaled=scaled,
+        )(coef=ONION_COEF, **params)
+
+    dist = model.init_dist()
+    assert dist.centered is centered
+    assert dist.scaled is scaled
+    log_prob = model.log_prob(RESPONSE)
+    assert log_prob.shape == RESPONSE.shape
+    assert jnp.allclose(log_prob, expected.log_prob(RESPONSE), atol=2e-5)
+    transformed = model.hg(RESPONSE)
+    assert jnp.allclose(
+        transformed, expected.transformation_and_logdet(RESPONSE)[0], atol=2e-5
+    )
+    assert jnp.allclose(model.hgi(transformed), RESPONSE, atol=2e-5)
+    masked_log_prob = expected.log_prob(RESPONSE).at[0, 0].set(0.0)
+    assert jnp.allclose(model.response.log_prob, masked_log_prob, atol=2e-5)
+    assert jnp.allclose(model.graph.log_lik, masked_log_prob.sum(), atol=2e-5)
+
+    if constructor == "new_HG":
+        samples = {"coef": jnp.stack([ONION_COEF, 1.5 * ONION_COEF])}
+        predicted_dist = model.init_dist(samples=samples)
+        assert predicted_dist.centered is centered
+        assert predicted_dist.scaled is scaled
+        predicted_log_prob = model.log_prob(RESPONSE, samples=samples)
+        assert predicted_log_prob.shape == (2,) + RESPONSE.shape
+        for i, coefficients in enumerate(samples["coef"]):
+            reference = ptm.onion_dist(
+                knots=knots.knots,
+                loc_scale=False,
+                parametric_distribution=tfd.TwoPieceStudentT,
+                centered=centered,
+                scaled=scaled,
+            )(coef=coefficients, **params)
+            assert jnp.allclose(
+                predicted_log_prob[i], reference.log_prob(RESPONSE), atol=2e-5
+            )

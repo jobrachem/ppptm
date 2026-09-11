@@ -135,9 +135,12 @@ class HDist(lsl.Dist):
     coef
         Coefficients for the transformation.
     centered
-        If True, use centered parameterization.
+        Whether to center the intermediate spline distribution using its finite-bound
+        raw mean; ``False`` by default.
     scaled
-        If True, use scaled parameterization.
+        Whether to scale the intermediate spline distribution using its finite-bound
+        raw variance; ``False`` by default. Neither flag fixes response moments after
+        a nonlinear parametric inverse.
     bspline
         Which spline variant to use: 'onion' or 'identity'.
     **G_kwargs
@@ -254,6 +257,10 @@ class Model:
         default. NaNs remain in ``response.value`` but contribute zero log density.
     auto_update
         Whether the Liesel graph updates automatically.
+    centered, scaled
+        Whether to center and scale the intermediate spline distribution using its
+        finite-bound raw moments; both default to ``False``. These do not guarantee
+        the parametric response mean or variance after a nonlinear parametric inverse.
 
     Attributes
     ----------
@@ -303,6 +310,9 @@ class Model:
         locscale: bool = False,
         mask_nan_response: bool = False,
         auto_update: bool = True,
+        *,
+        centered: bool = False,
+        scaled: bool = False,
     ):
         knots = jnp.asarray(knots)
         if g_dist is None:
@@ -342,8 +352,8 @@ class Model:
             bspline=bspline,
             g_dist=g_dist,
             coef=coef,
-            centered=False,
-            scaled=False,
+            centered=centered,
+            scaled=scaled,
             locscale=locscale,
             mask_nan_response=mask_nan_response,
         )
@@ -375,6 +385,9 @@ class Model:
         locscale: bool = False,
         mask_nan_response: bool = False,
         auto_update: bool = True,
+        *,
+        centered: bool = False,
+        scaled: bool = False,
     ) -> Model:
         """Construct a model with an onion-spline transformation.
 
@@ -401,6 +414,10 @@ class Model:
             Whether NaN response entries are masked.
         auto_update
             Whether the Liesel graph updates automatically.
+        centered, scaled
+            Whether to normalize the intermediate spline distribution using its
+            finite-bound raw mean and variance; both default to ``False``. This does
+            not fix response moments after a nonlinear parametric inverse.
 
         Returns
         -------
@@ -437,6 +454,8 @@ class Model:
             g_dist=g_dist,
             mask_nan_response=mask_nan_response,
             auto_update=auto_update,
+            centered=centered,
+            scaled=scaled,
         )
         return model
 
@@ -449,6 +468,9 @@ class Model:
         locscale: bool = False,
         mask_nan_response: bool = False,
         auto_update: bool = True,
+        *,
+        centered: bool = False,
+        scaled: bool = False,
     ) -> Model:
         """Construct a model with the identity spline and no spatial coefficients.
 
@@ -468,6 +490,9 @@ class Model:
             Whether NaN response entries are masked.
         auto_update
             Whether the Liesel graph updates automatically.
+        centered, scaled
+            Forwarded normalization flags, both ``False`` by default. They have no
+            effect on the identity spline's exact parametric distribution.
 
         Returns
         -------
@@ -506,6 +531,8 @@ class Model:
             g_dist=g_dist,
             mask_nan_response=mask_nan_response,
             auto_update=auto_update,
+            centered=centered,
+            scaled=scaled,
         )
         return model
 
