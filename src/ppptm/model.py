@@ -141,6 +141,10 @@ class HDist(lsl.Dist):
         Whether to scale the intermediate spline distribution using its finite-bound
         raw variance; ``False`` by default. Neither flag fixes response moments after
         a nonlinear parametric inverse.
+    locscale
+        Whether to use affine location-scale normalization. Requires a Normal
+        parametric distribution because the reference is standard Normal. Use
+        ``False`` for non-Gaussian marginals and their full CDF transformation.
     bspline
         Which spline variant to use: 'onion' or 'identity'.
     **G_kwargs
@@ -171,6 +175,16 @@ class HDist(lsl.Dist):
                 f"Positional inputs found on {g_dist=}. {self} requires distribution to "
                 "be defined with keyword inputs."
             )
+
+        if locscale:
+            parametric_dist = g_dist.init_dist()
+            if not isinstance(parametric_dist, tfd.Normal):
+                raise ValueError(
+                    "locscale=True requires an affine G transformation: g_dist must "
+                    "construct a Normal distribution for the standard Normal "
+                    f"reference. Got {type(parametric_dist).__name__}. "
+                    "Set locscale=False to use the full parametric CDF transformation."
+                )
 
         match bspline:
             case "onion":
@@ -251,7 +265,9 @@ class Model:
     bspline
         Spline construction: ``"onion"`` by default or ``"identity"``.
     locscale
-        Whether the transformation distribution includes location and scale.
+        Whether to use affine location-scale normalization. Requires a Normal
+        parametric distribution because the reference is standard Normal. Use
+        ``False`` for non-Gaussian marginals and their full CDF transformation.
     mask_nan_response
         Whether NaN responses are excluded from likelihood evaluation; ``False`` by
         default. NaNs remain in ``response.value`` but contribute zero log density.
@@ -409,7 +425,9 @@ class Model:
             variable with shape ``(nloc, nparam)``. Omitted coefficients are built
             with ``H``.
         locscale
-            Whether the transformation includes location and scale.
+            Whether to use affine location-scale normalization. Requires a Normal
+            parametric distribution because the reference is standard Normal. Use
+            ``False`` for non-Gaussian marginals and their full CDF transformation.
         mask_nan_response
             Whether NaN response entries are masked.
         auto_update
@@ -485,7 +503,8 @@ class Model:
         locscale
             Whether a supplied marginal distribution is treated as location-scale;
             ``False`` by default. When ``g_dist`` is omitted, the default Gaussian
-            forces this behavior on.
+            forces this behavior on. With the standard Normal reference, non-Gaussian
+            marginals require ``False`` for their full CDF transformation.
         mask_nan_response
             Whether NaN response entries are masked.
         auto_update

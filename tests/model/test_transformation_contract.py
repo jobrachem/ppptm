@@ -1,4 +1,6 @@
+from functools import partial
 from math import prod
+from typing import Any
 
 import jax.numpy as jnp
 import liesel.model as lsl
@@ -697,3 +699,56 @@ def test_scalar_posterior_with_location_parameters_and_new_locations():
         actual = model.log_prob(response, samples=samples, newdata=newdata)
         assert actual.shape == (2,) + response.shape
         assert jnp.allclose(actual, expected, atol=2e-5)
+
+
+@pytest.mark.parametrize("constructor", ["direct", "new_HG", "new_G"])
+@pytest.mark.parametrize(
+    "distribution,shape_params",
+    [
+        (tfd.TwoPieceStudentT, {"df": 8.0, "skewness": 1.3}),
+        (tfd.StudentT, {"df": 8.0}),
+        (tfd.Logistic, {}),
+        (tfd.LogNormal, {}),
+    ],
+    ids=["skew-t", "student-t", "logistic", "lognormal"],
+)
+def test_locscale_rejects_non_gaussian_marginals(
+    constructor, distribution, shape_params
+):
+    locations = gptm.unit_grid_vars(ngrid=2)
+    g_dist = lsl.Dist(distribution, loc=0.0, scale=1.0, **shape_params)
+    kwargs: dict[str, Any] = {"g_dist": g_dist, "locscale": True}
+    if constructor == "direct":
+        build = gptm.Model
+        kwargs["knots"] = ptm.OnionKnots(a=-7.0, b=7.0, nparam=4).knots
+    else:
+        build = getattr(gptm.Model, constructor)
+        if constructor == "new_HG":
+            kwargs["nparam"] = 4
+    if constructor != "new_G":
+        kwargs["coef"] = lsl.Var.new_value(ONION_COEF, name="coef")
+
+    with pytest.raises(ValueError, match="locscale=True") as error:
+        build(RESPONSE, locations, **kwargs)
+    message = str(error.value)
+    for detail in (distribution.__name__, "affine", "locscale=False"):
+        assert detail in message
+
+    kwargs["locscale"] = False
+    model = build(RESPONSE, locations, **kwargs)
+    assert jnp.all(jnp.isfinite(model.log_prob(RESPONSE)))
+
+
+@pytest.mark.parametrize("constructor", ["new_HG", "new_G"])
+def test_locscale_accepts_normal_factory(constructor):
+    locations = gptm.unit_grid_vars(ngrid=2)
+    g_dist = lsl.Dist(partial(tfd.Normal, validate_args=True), loc=0.2, scale=1.1)
+    kwargs: dict[str, Any] = {"g_dist": g_dist, "locscale": True}
+    if constructor == "new_HG":
+        kwargs.update(nparam=4, coef=lsl.Var.new_value(jnp.zeros((4, 4))))
+    model = getattr(gptm.Model, constructor)(RESPONSE, locations, **kwargs)
+    assert jnp.allclose(
+        model.log_prob(RESPONSE),
+        tfd.Normal(loc=0.2, scale=1.1).log_prob(RESPONSE),
+        atol=2e-5,
+    )
