@@ -1,5 +1,3 @@
-from collections.abc import Mapping
-
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -131,6 +129,13 @@ class CompositeTransformations:
             and sampling. This method constructs data and parameters; it does not run
             an optimizer.
 
+        Raises
+        ------
+        ValueError
+            If the training fields contain missing values. Batram needs complete
+            fields, so a marginal model fitted with ``mask_nan_response=True`` on data
+            with missing values cannot be used here.
+
         Notes
         -----
         Preceding neighbors are computed in the existing maximin location order. If
@@ -164,6 +169,13 @@ class CompositeTransformations:
 
         tnn = torch.as_tensor(nn)
         train_hg = self.marginal.hg(self.y) if self.use_marginal else self.y
+        missing = np.isnan(np.asarray(train_hg))
+        if missing.any():
+            raise ValueError(
+                "The dependence model cannot use responses with missing values: "
+                f"{int(missing.sum())} value(s) in {int(missing.any(axis=1).sum())} "
+                "field(s) are NaN. Batram needs complete fields."
+            )
 
         train_data = Data.new(tloc, torch.tensor(train_hg), tnn)
 
@@ -246,7 +258,6 @@ class CompositeTransformations:
         key: jax.Array,
         n: int,
         fixed_y: jax.typing.ArrayLike | None = None,
-        newdata: Mapping[str, ArrayLike] | None = None,
     ) -> jax.Array:
         """Sample fields from the fitted composite model.
 
@@ -276,6 +287,11 @@ class CompositeTransformations:
         Sampling draws standard-normal innovations, applies Batram's inverse map with
         nugget sampling, then applies ``marginal.hgi``. When conditioning and
         ``use_marginal=True``, the fixed prefix is transformed before inversion.
+
+        ``key`` only seeds the standard-normal innovations. Batram samples the nugget
+        with torch's global random state, so the same ``key`` gives different draws
+        across calls. Call ``torch.manual_seed`` before ``sample`` for reproducible
+        draws.
 
         Examples
         --------
@@ -319,6 +335,6 @@ class CompositeTransformations:
             )
             zt = zt.numpy()
 
-        y = self.marginal.hgi(zt, newdata=newdata)
+        y = self.marginal.hgi(zt)
 
         return y

@@ -368,3 +368,15 @@ def test_coefficient_gp_likelihood_gradients():
     assert transformed.shape == grid.shape
     assert jnp.all(jnp.isfinite(transformed))
     assert jnp.all(jnp.diff(transformed, axis=0) > 0.0)
+
+
+def test_second_model_on_same_locs_explains_how_to_copy():
+    shared = gptm.unit_grid_vars(ngrid=3)
+    response = normal(key(11), (4, 9))
+    baseline = gptm.Model.new_G(response, shared)
+
+    with pytest.raises(ValueError, match="copy"):
+        gptm.Model.new_HG(response, shared, nparam=6)
+
+    flexible = gptm.Model.new_HG(response, shared.copy(), nparam=6)
+    assert baseline.graph is not flexible.graph

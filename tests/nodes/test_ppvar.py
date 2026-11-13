@@ -33,3 +33,31 @@ class TestPPParam:
 
         arr = gptm.GPVar.sample_array(locs, n=3)
         assert arr.shape == (3, 100)
+
+
+def _softplus_gp(amplitude: float) -> gptm.ParamPredictiveProcessGP:
+    import tensorflow_probability.substrates.jax.bijectors as tfb
+
+    var = gptm.ParamPredictiveProcessGP(
+        locs=gptm.unit_grid_vars(ngrid=4),
+        gp_kernel=gptm.GPKernel(tfk.MaternFiveHalves, amplitude=jnp.array(amplitude)),
+        bijector=tfb.Softplus(),
+        name="scale",
+    )
+    var.latent_var.value = normal(key(3), var.latent_var.value.shape)
+    var.mean.value = jnp.array(0.5)
+    var.update()
+    return var
+
+
+def test_amplitude_scales_the_field_inside_the_bijector():
+    # amplitude 0 means no spatial variation: the bijector of the mean everywhere
+    flat = _softplus_gp(0.0)
+    assert jnp.allclose(flat.value, jnp.log1p(jnp.exp(0.5)))
+
+    # more amplitude means more variation relative to the level
+    def spread(amplitude: float):
+        value = _softplus_gp(amplitude).value
+        return value.max() / value.min()
+
+    assert spread(0.1) < spread(1.0) < spread(2.0)

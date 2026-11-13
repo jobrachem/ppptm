@@ -177,3 +177,44 @@ class TestH:
         assert isinstance(
             amplitude.mean.dist_node.init_dist(), tfd.TransformedDistribution
         )
+
+
+def _updated(dist: lsl.Dist, name: str):
+    node = dist[name]
+    lsl.Model([node])
+    return node.update().value
+
+
+def test_locwise_starts_do_not_depend_on_amplitude_start():
+    data = 18.5 + 5.0 * y
+    dist = gptm.G(data, gptm.unit_grid_vars(), amplitude_start=0.5).new_gaussian()
+    assert jnp.allclose(_updated(dist, "loc"), data.mean(), rtol=1e-5)
+    assert jnp.allclose(_updated(dist, "scale"), data.std(), rtol=1e-5)
+
+
+def test_h_locwise_amplitude_starts_at_amplitude_start():
+    amplitude = gptm.H(
+        gptm.unit_grid_vars(), locwise_amplitude=True, amplitude_start=0.2
+    ).new_amplitude("amp")
+    lsl.Model([amplitude])
+    assert jnp.allclose(amplitude.update().value, 0.2, rtol=1e-5)
+
+
+@pytest.mark.parametrize("locwise", [[], None])
+def test_zero_spread_data_gives_finite_positive_starts(locwise):
+    ties = jnp.zeros((10, nloc)).at[0].set(1.0)  # median absolute deviation is 0
+    constant = jnp.full((10, nloc), 2.0)  # standard deviation is 0
+
+    def make(data, constructor):
+        factory = gptm.G(data, gptm.unit_grid_vars())
+        method = getattr(factory, constructor)
+        return method() if locwise is None else method(locwise=locwise)
+
+    starts = [
+        _updated(make(ties, "new_skewt"), "scale"),
+        _updated(make(constant, "new_gaussian"), "scale"),
+        _updated(make(constant, "new_gamma"), "concentration"),
+        _updated(make(constant, "new_gamma"), "rate"),
+    ]
+    for start in starts:
+        assert jnp.all(jnp.isfinite(start)) and jnp.all(start > 0)

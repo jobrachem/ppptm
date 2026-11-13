@@ -150,6 +150,10 @@ Gaussian-process classes are available when its defaults need customization.
 
 ::: ppptm.LocationVars.new_from_ordered
 
+**Methods**
+
+::: ppptm.LocationVars.copy
+
 **Properties**
 
 ::: ppptm.LocationVars.sample_locs

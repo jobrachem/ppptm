@@ -28,9 +28,10 @@ class ParamPredictiveProcessGP(lsl.Var):
         Ordered sample and inducing-location variables with shapes ``(N, d)`` and
         ``(M, d)``.
     gp_kernel
-        Kernel whose amplitude and length scale define the process.
+        Kernel whose amplitude and length scale define the process. The amplitude
+        is the standard deviation of the spatial field before ``bijector``.
     bijector
-        Transformation applied to the latent GP value plus its mean.
+        Transformation applied to the GP mean plus the scaled spatial field.
     name
         Liesel node name.
     salt
@@ -48,10 +49,13 @@ class ParamPredictiveProcessGP(lsl.Var):
 
     Notes
     -----
-    The predictive process stores ``M`` standard-normal latent values and projects
-    them to ``N`` sample locations by a triangular solve with the Cholesky factor of
-    ``Kuu``. This reduces latent dimension when ``M < N``. The node value has shape
-    ``(N,)``.
+    The node value is ``bijector(mean + amplitude * f)`` with shape ``(N,)``. Here
+    ``f`` is a unit-variance predictive-process field: the process stores ``M``
+    standard-normal latent values and projects them to ``N`` sample locations by a
+    triangular solve with the Cholesky factor of ``Kuu``, which reduces the latent
+    dimension when ``M < N``. Because the amplitude scales ``f`` before the
+    bijector, an amplitude of zero gives the constant ``bijector(mean)`` and larger
+    amplitudes give more spatial variation, for constrained parameters as well.
 
     Examples
     --------
@@ -110,10 +114,8 @@ class ParamPredictiveProcessGP(lsl.Var):
             Kuu = Kuu.at[jnp.diag_indices(M)].add(salt)
 
             L = jnp.linalg.cholesky(Kuu)  # (M x M)
-            value = Kdu @ solve_triangular(L, latent_var, trans="T", lower=True)
-            value = bijector.forward(value + mean)
-
-            return amplitude * value
+            field = Kdu @ solve_triangular(L, latent_var, trans="T", lower=True)
+            return bijector.forward(mean + amplitude * field)
 
         super().__init__(
             lsl.Calc(

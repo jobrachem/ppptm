@@ -185,8 +185,7 @@ class Locations:
         loc2 = jnp.cos(lat_) * jnp.sin(lon_)
         loc3 = jnp.sin(lat_)
 
-        locs_3d = jnp.c_[loc1, loc2, loc3]
-        return locs_3d
+        return jnp.stack(jnp.broadcast_arrays(loc1, loc2, loc3), axis=-1)
 
 
 @dataclass(init=False)
@@ -323,6 +322,33 @@ class LocationVars:
     def sample_locs(self, value: lsl.Var):
         self._validate_shape(value, self.ordered_subset)
         self.ordered = value
+
+    def copy(self) -> LocationVars:
+        """Return new location variables with the same values, names and metadata.
+
+        Liesel variables can belong to only one model, so each ``Model`` needs its
+        own ``LocationVars``. Use a copy to build a second model on the same
+        locations, for example a ``new_G`` baseline next to a ``new_HG`` model.
+
+        Examples
+        --------
+        ```pycon
+        >>> import jax.numpy as jnp
+        >>> from ppptm import Model, unit_grid_vars
+        >>> locs = unit_grid_vars(2)
+        >>> baseline = Model.new_G(jnp.arange(8.0).reshape(2, 4), locs)
+        >>> flexible = Model.new_HG(jnp.arange(8.0).reshape(2, 4), locs.copy(), nparam=4)
+        >>> assert (flexible.locs.sample_locs.value == locs.sample_locs.value).all()
+
+        ```
+        """
+        ordered = lsl.Var.new_value(
+            jnp.asarray(self.ordered.value), name=self.ordered.name
+        )
+        ordered_subset = lsl.Var.new_value(
+            jnp.asarray(self.ordered_subset.value), name=self.ordered_subset.name
+        )
+        return type(self)(ordered, ordered_subset, locs=self._locs)
 
     @classmethod
     def new_from_ordered(cls, locs: Locations) -> LocationVars:

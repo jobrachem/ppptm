@@ -1,3 +1,4 @@
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -22,3 +23,15 @@ def test_location_metadata_access():
     without_metadata = gptm.LocationVars(locs.ordered, locs.ordered_subset)
     with pytest.raises(RuntimeError, match="Location metadata is unavailable"):
         _ = without_metadata.locs
+
+
+def test_from_2d_to_3d_stacks_coordinates_along_a_new_last_axis():
+    lon = jnp.array([[0.0, 90.0, 180.0], [0.0, 90.0, 180.0]])
+    lat = jnp.zeros((2, 3))
+
+    xyz = gptm.Locations.from_2d_to_3d(lon, lat)
+    assert xyz.shape == (2, 3, 3)
+    assert jnp.allclose(xyz[0, 1], jnp.array([0.0, 1.0, 0.0]), atol=1e-6)
+
+    assert gptm.Locations.from_2d_to_3d(jnp.array(0.0), jnp.array(90.0)).shape == (3,)
+    assert gptm.Locations.from_2d_to_3d(jnp.array([0.0, 90.0]), 0.0).shape == (2, 3)

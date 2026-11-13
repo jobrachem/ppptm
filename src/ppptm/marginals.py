@@ -19,6 +19,12 @@ _IDENTITY_BIJECTOR = tfb.Identity()
 _SOFTPLUS_BIJECTOR = tfb.Softplus()
 
 
+def _positive_or(value: ArrayLike, fallback: ArrayLike) -> Array:
+    """Return ``value`` where it is finite and positive, else ``fallback``."""
+    value = jnp.asarray(value)
+    return jnp.where(jnp.isfinite(value) & (value > 0), value, fallback)
+
+
 class G:
     """Build parametric marginal distributions for a transformation model.
 
@@ -41,12 +47,16 @@ class G:
     hyperparam_bijector
         Transformation enforcing the hyperparameter domain.
     amplitude_start
-        Initial spatial-kernel amplitude; ``1.0`` by default.
+        Initial spatial-kernel amplitude; ``1.0`` by default. The amplitude is the
+        standard deviation of a parameter's spatial variation on the unconstrained
+        scale, before its bijector.
 
     Notes
     -----
     Constant parameters are scalars; names included in a constructor's ``locwise``
-    argument become predictive-process GPs with shape ``(nloc,)``. Kernel length
+    argument become predictive-process GPs with shape ``(nloc,)``. Starting values
+    from the data do not depend on ``amplitude_start``; a zero data spread falls
+    back to a start of one. Kernel length
     scales start at the minimum pairwise inducing-location distance, so at least two
     distinct inducing locations are required.
 
@@ -349,7 +359,7 @@ class G:
         distribution :
             Liesel normal distribution ready for ``Model``. Its location starts at
             the finite response mean and scale at the finite response standard
-            deviation; keyword values are scalar or ``(nloc,)`` according to
+            deviation, or one if that is zero; keyword values are scalar or ``(nloc,)`` according to
             ``locwise``.
 
         Examples
@@ -368,7 +378,7 @@ class G:
             name="scale",
             locwise="scale" in locwise,
             bijector=tfb.Softplus(),
-            init_mean=self._std_y(),
+            init_mean=_positive_or(self._std_y(), 1.0),
         )
         return lsl.Dist(tfd.Normal, loc=loc, scale=scale)
 
@@ -406,7 +416,7 @@ class G:
             name="scale",
             locwise="scale" in locwise,
             bijector=tfb.Softplus(),
-            init_mean=self._std_y(),
+            init_mean=_positive_or(self._std_y(), 1.0),
         )
         skewness = self.new_param(
             name="skewness",
@@ -433,7 +443,8 @@ class G:
         -------
         distribution :
             Liesel two-piece-Student-t distribution ready for ``Model``. Location
-            starts at the median, scale at ``1.4826 * MAD``, skewness at one, and
+            starts at the median, scale at ``1.4826 * MAD`` (or the standard
+            deviation, or one, when the MAD is zero), skewness at one, and
             degrees of freedom at ten, providing a robust heavy-tailed alternative.
 
         Examples
@@ -456,7 +467,8 @@ class G:
             m = jnp.median(z)
             return jnp.median(jnp.abs(z - m))
 
-        scale_init = 1.4826 * mad(y)
+        # Tied data give a zero MAD; fall back to the standard deviation, then one.
+        scale_init = _positive_or(1.4826 * mad(y), _positive_or(jnp.std(y), 1.0))
 
         loc = self.new_param("loc", "loc" in locwise, init_mean=med)
 
@@ -503,8 +515,9 @@ class G:
 
         Notes
         -----
-        Responses should be positive and have nonzero finite variance. The factory
-        does not validate support before computing starting values.
+        Responses should be positive. The factory does not validate support before
+        computing starting values. A zero variance is replaced by one, and a start
+        that is not finite and positive falls back to one.
 
         Examples
         --------
@@ -518,9 +531,9 @@ class G:
         ```
         """
         ymean = self._mean_y()
-        yvar = self._var_y()
-        concentration_init = ymean**2 / yvar
-        rate_init = ymean / yvar
+        yvar = _positive_or(self._var_y(), 1.0)
+        concentration_init = _positive_or(ymean**2 / yvar, 1.0)
+        rate_init = _positive_or(ymean / yvar, 1.0)
 
         concentration = self.new_param(
             name="concentration",
@@ -624,7 +637,9 @@ class H:
     salt
         Diagonal covariance jitter; ``1e-6`` by default.
     amplitude_start
-        Initial coefficient-process amplitude; ``0.2`` by default.
+        Initial coefficient-process amplitude; ``0.2`` by default. With
+        ``locwise_amplitude=True`` it is also the start of the spatial amplitude's
+        level and of its spread.
 
     Notes
     -----
@@ -755,8 +770,13 @@ class H:
 
         Notes
         -----
-        If ``amplitude_prior`` is present, the prior is transferred to the GP mean on
-        its unconstrained scale so the realized amplitude still follows that prior.
+        The value is ``hyperparam_bijector(mean + spread * f)``: ``mean`` sets the
+        amplitude's level and starts so that the amplitude starts at
+        ``amplitude_start`` everywhere, while ``spread``, the kernel amplitude,
+        sets how much it varies over space. If ``amplitude_prior`` is present, it is
+        transferred to ``mean`` on its unconstrained scale, so the level
+        ``hyperparam_bijector(mean)`` follows that prior; ``spread`` uses the same
+        prior.
 
         Examples
         --------
@@ -780,6 +800,7 @@ class H:
             bijector=self.hyperparam_bijector,
             salt=self.salt,
         )
+        param.mean.value = self.hyperparam_bijector.inverse(self.amplitude_start)
 
         amplitude_prior = self.amplitude_prior
         if amplitude_prior is not None:

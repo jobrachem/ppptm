@@ -173,3 +173,38 @@ class TestTFK:
         K2 = k.matrix(s / ell, s / ell)
 
         assert jnp.allclose(K1, K2)
+
+
+def test_new_keeps_explicit_zero_and_vector_arguments():
+    base = kl.GPKernel(
+        tfk.ExponentiatedQuadratic,
+        amplitude=jnp.array(2.0),
+        length_scale=jnp.array(1.0),
+    )
+
+    zero = base.new(x1=locs, x2=locs, amplitude=jnp.array(0.0), name="k0").update()
+    assert jnp.all(zero.value == 0.0)
+
+    ard = base.new(
+        x1=locs, x2=locs, length_scale=jnp.array([0.1, 0.5]), name="k1"
+    ).update()
+    assert ard.value.shape == (10, 10)
+
+
+def test_location_wise_amplitude_needs_matching_coordinates():
+    import pytest
+
+    rows = lsl.Var.new_obs(jnp.zeros((3, 2)), name="rows")
+    cols = lsl.Var.new_obs(jnp.ones((2, 2)), name="cols")
+    with pytest.raises(ValueError, match="amplitude"):
+        kl.GPKernel(tfk.ExponentiatedQuadratic, amplitude=jnp.ones(3), x1=rows, x2=cols)
+
+    # one amplitude per location is fine for the covariance of a set with itself
+    square = kl.GPKernel(
+        tfk.ExponentiatedQuadratic, amplitude=jnp.ones(3), x1=rows, x2=rows
+    )
+    assert square.value.shape == (3, 3)
+
+    # without coordinates the kernel only carries hyperparameters for other nodes
+    carrier = kl.GPKernel(tfk.ExponentiatedQuadratic, amplitude=jnp.ones(3))
+    assert carrier.amplitude.value.shape == (3,)

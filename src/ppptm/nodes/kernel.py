@@ -18,8 +18,9 @@ class GPKernel(lsl.Var):
     kernel
         TensorFlow Probability positive-semidefinite kernel constructor.
     amplitude
-        Scalar, length-``nloc`` array, or Liesel input. The covariance is multiplied
-        by the outer product of amplitudes; ``1.0`` by default.
+        Scalar or Liesel input; ``1.0`` by default. The covariance is multiplied by
+        the outer product of amplitudes. One amplitude per location is allowed only
+        when ``x1`` and ``x2`` are the same coordinates, or when both are omitted.
     length_scale
         Positive scalar or length-``ndim`` vector controlling correlation range;
         ``1.0`` by default. A vector enables automatic relevance determination.
@@ -37,12 +38,22 @@ class GPKernel(lsl.Var):
     length_scale
         Covariance-length-scale input node.
 
+    Raises
+    ------
+    ValueError
+        If the amplitude is not scalar and ``x1`` and ``x2`` are different
+        coordinates. Scale the field instead for a location-wise amplitude, as
+        ``H(locwise_amplitude=True)`` does.
+
     Notes
     -----
     The wrapped TensorFlow Probability kernel is evaluated with unit amplitude and
-    feature scaling, then multiplied by ``outer(amplitude, amplitude)``. This permits
-    a different marginal scale at each location without triggering TFP's batch
-    semantics for array-valued amplitudes.
+    feature scaling, then multiplied by ``outer(amplitude, amplitude)``. For the
+    covariance of one set of locations with itself, this permits a different
+    marginal scale at each location without triggering TFP's batch semantics for
+    array-valued amplitudes. A cross-covariance would need the amplitude at both
+    sets of locations, which one vector cannot provide. Without coordinates, the
+    node only carries hyperparameters for kernels built with ``new``.
 
     Examples
     --------
@@ -69,6 +80,18 @@ class GPKernel(lsl.Var):
             lsval = jnp.asarray(length_scale.value)
         else:
             lsval = jnp.asarray(length_scale)
+
+        amplitude_value = (
+            amplitude.value if isinstance(amplitude, lsl.Var | lsl.Node) else amplitude
+        )
+        has_coordinates = x1 is not None or x2 is not None
+        if has_coordinates and x1 is not x2 and jnp.ndim(amplitude_value) > 0:
+            raise ValueError(
+                "GPKernel needs a scalar amplitude for a covariance between different "
+                f"coordinates; got amplitude shape {jnp.shape(amplitude_value)}. For "
+                "an amplitude that varies over locations, scale the field instead, as "
+                "H(locwise_amplitude=True) does."
+            )
 
         if lsval.shape:
             dummy = jnp.ones((1, lsval.shape[-1]))
@@ -147,8 +170,8 @@ class GPKernel(lsl.Var):
 
         ```
         """
-        amplitude = amplitude or self.amplitude
-        length_scale = length_scale or self.length_scale
+        amplitude = self.amplitude if amplitude is None else amplitude
+        length_scale = self.length_scale if length_scale is None else length_scale
         kernel = GPKernel(
             kernel=self.kernel,
             amplitude=amplitude,

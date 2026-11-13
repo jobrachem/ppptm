@@ -288,7 +288,8 @@ class Model:
     ------
     ValueError
         If response and coefficient nodes describe different numbers of locations,
-        or if NaN masking is requested with non-finite supplied marginal parameters.
+        if NaN masking is requested with non-finite supplied marginal parameters, or
+        if ``locs``, ``g_dist`` or ``coef`` already belong to another model.
 
     Notes
     -----
@@ -381,7 +382,17 @@ class Model:
 
         self.graph = lsl.Model(lsl.Var(0.0, name="stub"), to_float32=to_float32)
         self.graph.auto_update = auto_update
-        self.graph.replace("stub", self.response)
+        try:
+            self.graph.replace("stub", self.response)
+        except RuntimeError as error:
+            if "can only be part of one model" not in str(error):
+                raise
+            raise ValueError(
+                "Some inputs of this model already belong to another Model. Liesel "
+                "variables can belong to only one model, so build each Model from "
+                "its own locations, e.g. Model.new_HG(y, locs.copy()), and its own "
+                "g_dist and coef."
+            ) from error
 
     @classmethod
     def new_HG(
@@ -513,7 +524,8 @@ class Model:
         model :
             Model containing only the parametric marginal transformation ``g``. Use
             it when a flexible spline term is unnecessary or as a baseline against
-            ``new_HG``.
+            ``new_HG``. Each model needs its own ``LocationVars``; pass
+            ``locs.copy()`` to the second model.
 
         Raises
         ------
