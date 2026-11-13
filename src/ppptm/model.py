@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from functools import partial
 from typing import Any, Literal, cast
 
@@ -824,7 +825,7 @@ class Model:
     def init_dist(
         self,
         samples: dict[str, Array] | None = None,
-        newdata: dict[str, ArrayLike] | None = None,
+        newdata: Mapping[str, ArrayLike] | None = None,
     ) -> PTMDist:
         """Initialize the transformation distribution at model or posterior values.
 
@@ -866,6 +867,7 @@ class Model:
         """
         if samples is None and newdata is not None:
             raise ValueError("newdata requires posterior samples.")
+        newdata = dict(newdata) if newdata is not None else None
 
         if samples is None:
             assert self.response.dist_node is not None
@@ -965,7 +967,7 @@ class Model:
         self,
         value: ArrayLike,
         samples: dict[str, Array] | None,
-        newdata: dict[str, ArrayLike] | None,
+        newdata: Mapping[str, ArrayLike] | None,
         operation: Any,
         mask_nan: bool = False,
     ) -> Array:
@@ -995,7 +997,7 @@ class Model:
         self,
         y: ArrayLike,
         samples: dict[str, Array] | None = None,
-        newdata: dict[str, ArrayLike] | None = None,
+        newdata: Mapping[str, ArrayLike] | None = None,
     ) -> Array:
         """Apply the parametric marginal transformation.
 
@@ -1046,7 +1048,7 @@ class Model:
         self,
         yt: ArrayLike,
         samples: dict[str, Array] | None = None,
-        newdata: dict[str, ArrayLike] | None = None,
+        newdata: Mapping[str, ArrayLike] | None = None,
     ) -> Array:
         """Invert the parametric marginal transformation.
 
@@ -1094,7 +1096,7 @@ class Model:
         self,
         yt: ArrayLike,
         samples: dict[str, Array] | None = None,
-        newdata: dict[str, ArrayLike] | None = None,
+        newdata: Mapping[str, ArrayLike] | None = None,
     ) -> Array:
         """Apply the spline component of the transformation.
 
@@ -1143,7 +1145,7 @@ class Model:
         self,
         zt: ArrayLike,
         samples: dict[str, Array] | None = None,
-        newdata: dict[str, ArrayLike] | None = None,
+        newdata: Mapping[str, ArrayLike] | None = None,
     ) -> Array:
         """Invert the spline component of the transformation.
 
@@ -1192,7 +1194,7 @@ class Model:
         self,
         y: ArrayLike,
         samples: dict[str, Array] | None = None,
-        newdata: dict[str, ArrayLike] | None = None,
+        newdata: Mapping[str, ArrayLike] | None = None,
     ) -> Array:
         """Apply the full spline and parametric transformation.
 
@@ -1242,7 +1244,7 @@ class Model:
         self,
         zt: ArrayLike,
         samples: dict[str, Array] | None = None,
-        newdata: dict[str, ArrayLike] | None = None,
+        newdata: Mapping[str, ArrayLike] | None = None,
     ) -> Array:
         """Invert the full spline and parametric transformation.
 
@@ -1287,7 +1289,7 @@ class Model:
         self,
         y: ArrayLike,
         samples: dict[str, Array] | None = None,
-        newdata: dict[str, ArrayLike] | None = None,
+        newdata: Mapping[str, ArrayLike] | None = None,
     ) -> Array:
         """Evaluate model log probabilities, masking configured NaN responses.
 

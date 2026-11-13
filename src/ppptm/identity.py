@@ -9,11 +9,16 @@ never evaluated.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import jax.numpy as jnp
 import tensorflow_probability.substrates.jax.bijectors as tfb
-from liesel_ptm import LocScaleTransformationDist, PTMSpline, TransformationDist
+from liesel_ptm import (
+    LocScaleTransformationDist,
+    PTMSpline,
+    SplineBijector,
+    TransformationDist,
+)
 
 Array = Any
 
@@ -58,9 +63,12 @@ class _IdentitySpline(TransformationDist):
         )
 
     @property
-    def spline_bijector(self) -> tfb.Bijector:  # type: ignore[override]  # ty: ignore[incompatible-property-override]
-        """The spline transformation as a TFP bijector: the identity."""
-        return tfb.Identity()
+    def spline_bijector(self) -> SplineBijector:
+        """The spline transformation as a TFP bijector: ``tfb.Identity()``.
+
+        Typed as the parent's ``SplineBijector`` to keep the override compatible.
+        """
+        return cast(SplineBijector, tfb.Identity())
 
     def _broadcast_value(self, value: Array) -> Array:
         value = jnp.asarray(value, dtype=self.dtype)

@@ -1,3 +1,5 @@
+from collections.abc import Mapping
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -244,7 +246,7 @@ class CompositeTransformations:
         key: jax.Array,
         n: int,
         fixed_y: jax.typing.ArrayLike | None = None,
-        newdata: dict[str, ArrayLike] | None = None,
+        newdata: Mapping[str, ArrayLike] | None = None,
     ) -> jax.Array:
         """Sample fields from the fitted composite model.
 

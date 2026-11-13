@@ -51,7 +51,7 @@ class TestModel:
 
         assert jnp.any(mask)
         assert not jnp.any(jnp.isnan(model.graph.log_prob))
-        assert jnp.all(model.response.log_prob[mask] == 0.0)
+        assert jnp.all(jnp.asarray(model.response.log_prob)[mask] == 0.0)
 
     def test_init_gaussian_const(self):
         g = gptm.G(y, locs).new_gaussian(locwise=[])
@@ -78,7 +78,7 @@ class TestModel:
 
         assert jnp.any(mask)
         assert not jnp.any(jnp.isnan(model.graph.log_prob))
-        assert jnp.all(model.response.log_prob[mask] == 0.0)
+        assert jnp.all(jnp.asarray(model.response.log_prob)[mask] == 0.0)
 
     def test_init_hg_ard(self):
         coef = gptm.H(locs, ard=True).new_coef()
@@ -316,7 +316,7 @@ class TestModel:
         model = gptm.Model.new_G(fit_y, fit_locs)
 
         with pytest.raises(TypeError, match="loss_monitor"):
-            model.fit(stopper=loptim.Stopper(epochs=1, patience=1))
+            model.fit(stopper=loptim.Stopper(epochs=1, patience=1))  # ty: ignore[missing-argument]
 
     def test_fit_passes_loss_monitor_to_liesel(self):
         model = gptm.Model.new_G(fit_y, fit_locs)

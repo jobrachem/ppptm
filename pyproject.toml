@@ -37,7 +37,6 @@ dev = [
     "black",
     "flake8",
     "isort",
-    "mypy",
     "pdoc",
     "pre-commit",
     "pytest",
@@ -45,7 +44,8 @@ dev = [
     "pyupgrade",
     "plotnine",
     "ipykernel",
-    "ruff>=0.16.2",
+    "ruff>=0.17.5",
+    "ty>=0.0.104",
 ]
 docs = [
     "mkdocstrings[python]>=1.0.6",
@@ -84,15 +84,9 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 
-[tool.mypy]
-files = ["src/ppptm", "tests"]
-ignore_missing_imports = true
-scripts_are_modules = true
-disable_error_code = "annotation-unchecked"
-
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.uv.sources]
-liesel-ptm = { path = "../liesel-ptm", editable = true }
+liesel-ptm = { git = "https://github.com/liesel-devs/liesel-ptm.git", branch = "codex/cleanup" }
 liesel = { git = "https://github.com/liesel-devs/liesel.git", branch = "vi-modernization" }
