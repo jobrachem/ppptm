@@ -9,7 +9,6 @@ import pytest
 import tensorflow_probability.substrates.jax.distributions as tfd
 from jax.random import key
 from jax.typing import ArrayLike
-from liesel_ptm.dist import PseudoTransformationDist
 
 import ppptm as gptm
 
@@ -446,9 +445,13 @@ def test_identity_deterministic_goldens(model_for, locscale):
     model = model_for(("identity", locscale), fixed=True)
 
     for surface, expected in IDENTITY_GOLDENS[locscale].items():
-        assert jnp.array_equal(
-            _call_public_surface(model, surface, GOLDEN_VALUES), expected
-        )
+        result = _call_public_surface(model, surface, GOLDEN_VALUES)
+        if locscale or surface in ("h", "hi"):
+            assert jnp.array_equal(result, expected)
+        else:
+            # The CDF-quantile round trip may round one float32 ulp differently
+            # depending on whether liesel_ptm's jitted quantile is used.
+            assert jnp.allclose(result, expected, atol=1e-6, rtol=0.0)
 
 
 ONION_GOLDENS = {
@@ -550,16 +553,10 @@ def test_spline_normalization_flags(constructor, centered, scaled):
             scaled=scaled,
             mask_nan_response=True,
         )
-        expected = PseudoTransformationDist(
-            coef=jnp.array(0.0),
-            parametric_distribution=tfd.TwoPieceStudentT,
-            centered=centered,
-            scaled=scaled,
-            loc=params["loc"],
-            scale=params["scale"],
-            skewness=params["skewness"],
-            df=params["df"],
-        )
+        # The identity spline leaves only the exact parametric transformation.
+        parametric = tfd.TwoPieceStudentT(**params)
+        expected_log_prob = parametric.log_prob(RESPONSE)
+        expected_hg = tfd.Normal(0.0, 1.0).quantile(parametric.cdf(RESPONSE))
     else:
         coef = lsl.Var.new_value(ONION_COEF, name="coef")
         if constructor == "direct":
@@ -591,19 +588,19 @@ def test_spline_normalization_flags(constructor, centered, scaled):
             centered=centered,
             scaled=scaled,
         )(coef=ONION_COEF, **params)
+        expected_log_prob = expected.log_prob(RESPONSE)
+        expected_hg = expected.transformation_and_logdet(RESPONSE)[0]
 
     dist = model.init_dist()
     assert dist.centered is centered
     assert dist.scaled is scaled
     log_prob = model.log_prob(RESPONSE)
     assert log_prob.shape == RESPONSE.shape
-    assert jnp.allclose(log_prob, expected.log_prob(RESPONSE), atol=2e-5)
+    assert jnp.allclose(log_prob, expected_log_prob, atol=2e-5)
     transformed = model.hg(RESPONSE)
-    assert jnp.allclose(
-        transformed, expected.transformation_and_logdet(RESPONSE)[0], atol=2e-5
-    )
+    assert jnp.allclose(transformed, expected_hg, atol=2e-5)
     assert jnp.allclose(model.hgi(transformed), RESPONSE, atol=2e-5)
-    masked_log_prob = expected.log_prob(RESPONSE).at[0, 0].set(0.0)
+    masked_log_prob = expected_log_prob.at[0, 0].set(0.0)
     assert jnp.allclose(model.response.log_prob, masked_log_prob, atol=2e-5)
     assert jnp.allclose(model.graph.log_lik, masked_log_prob.sum(), atol=2e-5)
 

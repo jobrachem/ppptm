@@ -95,4 +95,4 @@ allow-direct-references = true
 
 [tool.uv.sources]
 liesel-ptm = { path = "../liesel-ptm", editable = true }
-liesel = { path = "../liesel", editable = true }
+liesel = { git = "https://github.com/liesel-devs/liesel.git", branch = "vi-modernization" }

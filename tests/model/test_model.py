@@ -8,6 +8,8 @@ from liesel import optim as loptim
 
 import ppptm as gptm
 
+EMA = loptim.EmaTrainLossMonitor(effective_window=1.0)
+
 locs = gptm.unit_grid_vars()
 nobs = 23
 nloc = locs.sample_locs.value.shape[0]
@@ -21,8 +23,8 @@ fit_y_nan = fit_y.at[0, 0].set(jnp.nan).at[2, 3].set(jnp.nan)
 
 
 def assert_fit_result_is_finite(model, result):
-    assert result.best_position
-    for value in result.best_position.values():
+    assert result.position_min_monitor
+    for value in result.position_min_monitor.values():
         assert jnp.all(jnp.isfinite(value))
     assert not jnp.any(jnp.isnan(model.graph.log_prob))
 
@@ -218,6 +220,7 @@ class TestModel:
     def test_fit_gaussian_mask_nan_response_location_batching(self):
         model = gptm.Model.new_G(fit_y_nan, fit_locs, mask_nan_response=True)
         result = model.fit(
+            loss_monitor=EMA,
             stopper=loptim.Stopper(epochs=1, patience=1),
             batch_size=4,
             seed=1,
@@ -232,6 +235,7 @@ class TestModel:
             fit_y_nan, fit_locs, nparam=12, mask_nan_response=True
         )
         result = model.fit(
+            loss_monitor=EMA,
             stopper=loptim.Stopper(epochs=1, patience=1),
             batch_size=4,
             seed=2,
@@ -249,6 +253,7 @@ class TestModel:
         )
 
         result = model.fit(
+            loss_monitor="validation",
             stopper=loptim.Stopper(epochs=1, patience=1),
             response_validation=validation_y,
             batch_size=4,
@@ -257,13 +262,15 @@ class TestModel:
         )
 
         assert_fit_result_is_finite(model, result)
-        assert not jnp.any(jnp.isnan(result.history.loss_validate))
+        assert result.monitor_source == "validation"
+        assert not jnp.any(jnp.isnan(result.history.loss_monitor))
 
     def test_fit_location_batch_size_must_divide_nloc_without_shuffling(self):
         model = gptm.Model.new_G(fit_y, fit_locs)
 
         with pytest.raises(ValueError, match="must divide"):
             model.fit(
+                loss_monitor=EMA,
                 stopper=loptim.Stopper(epochs=1, patience=1),
                 batch_size=5,
                 shuffle_batches=False,
@@ -275,12 +282,13 @@ class TestModel:
         model = gptm.Model.new_G(fit_y, fit_locs)
 
         with pytest.raises(TypeError, match="positive integer or None"):
-            model.fit(batch_size=True)
+            model.fit(loss_monitor=EMA, batch_size=True)
 
     def test_fit_location_batch_size_may_leave_remainder_with_shuffling(self):
         model = gptm.Model.new_G(fit_y, fit_locs)
 
         result = model.fit(
+            loss_monitor=EMA,
             stopper=loptim.Stopper(epochs=1, patience=1),
             batch_size=5,
             shuffle_batches=True,
@@ -289,6 +297,37 @@ class TestModel:
         )
 
         assert_fit_result_is_finite(model, result)
+
+    def test_fit_validation_without_auto_update(self):
+        # Without auto_update the prior log-probs start uncomputed; liesel's
+        # validation monitor needs an up-to-date model state.
+        model = gptm.Model.new_HG(fit_y, fit_locs, nparam=12, auto_update=False)
+
+        result = model.fit(
+            loss_monitor="validation",
+            response_validation=normal(key(789), (3, fit_nloc)),
+            stopper=loptim.Stopper(epochs=1, patience=1),
+            save_position_history=False,
+        )
+
+        assert_fit_result_is_finite(model, result)
+
+    def test_fit_requires_explicit_loss_monitor(self):
+        model = gptm.Model.new_G(fit_y, fit_locs)
+
+        with pytest.raises(TypeError, match="loss_monitor"):
+            model.fit(stopper=loptim.Stopper(epochs=1, patience=1))
+
+    def test_fit_passes_loss_monitor_to_liesel(self):
+        model = gptm.Model.new_G(fit_y, fit_locs)
+
+        result = model.fit(
+            loss_monitor="train_full_data",
+            stopper=loptim.Stopper(epochs=1, patience=1),
+            save_position_history=False,
+        )
+
+        assert result.monitor_source == "train_full_data"
 
 
 def test_coefficient_gp_likelihood_gradients():

@@ -12,15 +12,14 @@ from jax.typing import ArrayLike
 from liesel import optim as loptim
 from liesel.optim.state import OptimResult
 from liesel.optim.types import Position
-from liesel_ptm import onion_dist
-from liesel_ptm.bspline import OnionKnots
-from liesel_ptm.dist import (
-    LocScalePseudoTransformationDist,
+from liesel_ptm import (
     LocScaleTransformationDist,
-    PseudoTransformationDist,
+    OnionKnots,
     TransformationDist,
+    onion_dist,
 )
 
+from .identity import IdentityTransformationDist, LocScaleIdentityTransformationDist
 from .marginals import G, H
 from .nodes.ppvar_rw import SpatPTMCoef
 from .util.locs import LocationVars
@@ -29,12 +28,9 @@ KeyArray = Any
 type PTMDist = (
     TransformationDist
     | LocScaleTransformationDist
-    | PseudoTransformationDist
-    | LocScalePseudoTransformationDist
+    | IdentityTransformationDist
+    | LocScaleIdentityTransformationDist
 )
-type TrainMonitor = Literal[
-    "auto", "epoch_average", "weighted_epoch_average", "full_data"
-]
 
 
 def _coerce_stopper(stopper: Any | None) -> loptim.Stopper:
@@ -194,20 +190,18 @@ class HDist(lsl.Dist):
                     parametric_distribution=g_dist.distribution,
                     centered=centered,
                     scaled=scaled,
-                    batched=True,
                 )
             case "identity":
                 dist_class = (
-                    LocScalePseudoTransformationDist
+                    LocScaleIdentityTransformationDist
                     if locscale
-                    else PseudoTransformationDist
+                    else IdentityTransformationDist
                 )
                 partial_dist_class = partial(
                     dist_class,
                     parametric_distribution=g_dist.distribution,
                     centered=centered,
                     scaled=scaled,
-                    batched=True,
                 )
 
         self.partial_dist_class = partial_dist_class
@@ -604,6 +598,8 @@ class Model:
 
     def fit(
         self,
+        *,
+        loss_monitor: loptim.LossMonitor,
         stopper: Any | None = None,
         response_validation: ArrayLike | None = None,
         optimizer: optax.GradientTransformation | None = None,
@@ -613,7 +609,6 @@ class Model:
         shuffle_batches: bool = True,
         scale_loss: bool = False,
         validation_strategy: Literal["log_lik", "log_prob"] = "log_lik",
-        train_monitor: TrainMonitor = "auto",
         save_position_history: bool = True,
         progress_n_updates: int = 100,
     ) -> OptimResult:
@@ -628,6 +623,16 @@ class Model:
 
         Parameters
         ----------
+        loss_monitor
+            Loss that drives early stopping, the progress bar and
+            ``result.position_min_monitor``; passed to
+            ``liesel.optim.LieselOptim``. Use ``"validation"`` with
+            ``response_validation``. Without validation data, use
+            ``"train_full_data"`` for the exact training loss after each epoch, or
+            ``liesel.optim.EmaTrainLossMonitor(effective_window=...)`` for an
+            exponential moving average of the pre-update training losses, with the
+            span measured in epochs. A span of ``1.0`` is the exact pre-update loss
+            without mini-batching.
         stopper
             Stopping rule for the optimizer. If ``None``, uses
             ``liesel.optim.Stopper(epochs=1000, patience=10, rtol=1e-6)``. Objects
@@ -661,21 +666,20 @@ class Model:
         validation_strategy
             Validation objective passed to Liesel. ``"log_lik"`` uses only the
             likelihood; ``"log_prob"`` also includes the log prior.
-        train_monitor
-            Training-data monitor strategy used when no validation response is
-            supplied. Passed through to ``liesel.optim.OptimEngine``.
         save_position_history
             Whether to store parameter positions for every epoch in the optimization
             history.
         progress_n_updates
-            Approximate maximum number of progress-bar updates.
+            Approximate maximum number of progress-bar updates over the stopper's
+            maximum number of epochs.
 
         Returns
         -------
         liesel.optim.state.OptimResult
             Optimization result returned by Liesel. The model graph is updated to
-            ``result.best_position`` before returning, so subsequent transformations
-            use the best fitted parameters. History retention is controlled by
+            ``result.position_min_monitor``, the position with the lowest monitored
+            loss, before returning, so subsequent transformations use the best
+            fitted parameters. History retention is controlled by
             ``save_position_history``.
 
         Raises
@@ -694,7 +698,7 @@ class Model:
         >>> import jax.numpy as jnp
         >>> from ppptm import Model, unit_grid_vars
         >>> model = Model.new_G(jnp.arange(8.0).reshape(2, 4), unit_grid_vars(2))
-        >>> model.fit(batch_size=0)
+        >>> model.fit(loss_monitor="train_full_data", batch_size=0)
         Traceback (most recent call last):
         ...
         ValueError: batch_size must be a positive integer or None.
@@ -703,6 +707,10 @@ class Model:
         """
         _validate_location_batch_size(batch_size, self.nloc, shuffle_batches)
         _validate_progress_n_updates(progress_n_updates)
+
+        # Liesel evaluates losses from the current model state, which must not hold
+        # outdated nodes. Without auto_update, nodes stay outdated until updated.
+        self.graph.update()
 
         response_name = self.response.name
         sample_locs = self.locs.sample_locs
@@ -779,21 +787,22 @@ class Model:
             self.parameters,
             optimizer=optimizer if optimizer is not None else optax.adam(1e-3),
         )
+        stopper = _coerce_stopper(stopper)
         optim = loptim.LieselOptim(
             self.graph,
             split=split,
             batches=batches,
             optimizers=[opt],
-            stopper=_coerce_stopper(stopper),
+            stopper=stopper,
             seed=seed,
             validation_strategy=validation_strategy,
             scale_loss=scale_loss,
-            train_monitor=train_monitor,
+            loss_monitor=loss_monitor,
+            save_position_history=save_position_history,
+            show_progress=progress_bar,
+            progress_update_every=max(1, -(-stopper.epochs // progress_n_updates)),
         )
         engine = optim.build_engine()
-        engine.show_progress = progress_bar
-        engine.save_position_history = save_position_history
-        engine.progress_n_updates = progress_n_updates
 
         try:
             result = engine.fit()
@@ -808,7 +817,7 @@ class Model:
             ) from error
 
         self.fit_result = result
-        self.graph.state = self.graph.update_state(self.fit_result.best_position)
+        self.graph.state = self.graph.update_state(self.fit_result.position_min_monitor)
 
         return result
 
