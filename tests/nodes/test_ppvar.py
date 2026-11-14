@@ -63,10 +63,25 @@ def test_amplitude_scales_the_field_inside_the_bijector():
     assert spread(0.1) < spread(1.0) < spread(2.0)
 
 
-def test_sample_df_reports_lon_lat_for_sphere_locations():
+def test_sample_df_needs_two_dimensional_locations():
     lonlat = jnp.array([[-100.0, 10.0], [-90.0, 20.0], [-80.0, 30.0], [-70.0, 40.0]])
     sphere = gptm.LocationVars.new_from(lonlat, n_subset=2, from_2d_to_3d=True)
+    with pytest.raises(ValueError, match="2-D"):
+        gptm.GPVar.sample_df(sphere)
 
-    df = gptm.GPVar.sample_df(sphere, n=1)
-    pairs = {(round(lon, 3), round(lat, 3)) for lon, lat in zip(df["lon"], df["lat"])}
-    assert pairs == {(round(float(a), 3), round(float(b), 3)) for a, b in lonlat}
+    # sample_array still works for any locations
+    assert gptm.GPVar.sample_array(sphere, n=2).shape == (2, 4)
+
+
+def test_samplers_default_to_the_matern_kernel():
+    grid = gptm.unit_grid_vars(ngrid=3)
+    default = gptm.GPVar.sample_array(grid, n=2, seed=3)
+    matern = gptm.GPVar.sample_array(grid, n=2, seed=3, kernel=tfk.MaternFiveHalves)
+    squared = gptm.GPVar.sample_array(
+        grid, n=2, seed=3, kernel=tfk.ExponentiatedQuadratic
+    )
+    assert jnp.array_equal(default, matern)
+    assert not jnp.allclose(default, squared)
+
+    df = gptm.GPVar.sample_df(grid, n=2, seed=3)
+    assert jnp.allclose(df["value"].to_numpy(), default.T.reshape(-1, order="F"))

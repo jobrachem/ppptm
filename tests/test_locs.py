@@ -46,19 +46,3 @@ def test_new_from_defaults_and_caps_the_inducing_subset():
     capped = gptm.LocationVars.new_from(coords, n_subset=10)
     assert capped.locs.n_subset == 4
     assert capped.inducing_locs.value.shape == (4, 2)
-
-
-def test_lon_lat_columns_converts_only_unit_sphere_points():
-    from ppptm.util.locs import lon_lat_columns
-
-    sphere = gptm.Locations.from_2d_to_3d(
-        jnp.array([-100.0, 30.0]), jnp.array([10.0, -45.0])
-    )
-    lon, lat = lon_lat_columns(sphere)
-    assert jnp.allclose(lon, jnp.array([-100.0, 30.0]), atol=1e-4)
-    assert jnp.allclose(lat, jnp.array([10.0, -45.0]), atol=1e-4)
-
-    plain = jnp.array([[10.0, 5.0, 2.0], [1.0, 2.0, 3.0]])
-    lon, lat = lon_lat_columns(plain)
-    assert jnp.array_equal(lon, plain[:, 0])
-    assert jnp.array_equal(lat, plain[:, 1])

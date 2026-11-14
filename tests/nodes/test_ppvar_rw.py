@@ -130,3 +130,19 @@ def test_random_walk_gp_applies_its_bijector():
         return gp.value
 
     assert jnp.allclose(build(tfb.Exp()), jnp.exp(build(tfb.Identity())), rtol=1e-5)
+
+
+def test_random_walk_sample_df_needs_two_dimensional_locations():
+    lonlat = jnp.array([[-100.0, 10.0], [-90.0, 20.0], [-80.0, 30.0], [-70.0, 40.0]])
+    sphere = gptm.LocationVars.new_from(lonlat, n_subset=2, from_2d_to_3d=True)
+    with pytest.raises(ValueError, match="2-D"):
+        gptm.GPTMCoef.sample_df(sphere, nparam=3)
+
+
+def test_random_walk_samplers_default_to_the_matern_kernel():
+    grid = gptm.unit_grid_vars(ngrid=3)
+    default = gptm.GPTMCoef.sample_array(grid, nparam=3, n=2, seed=3)
+    matern = gptm.GPTMCoef.sample_array(
+        grid, nparam=3, n=2, seed=3, kernel=tfk.MaternFiveHalves
+    )
+    assert jnp.array_equal(default, matern)

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
-
 import jax.numpy as jnp
 import liesel.model as lsl
 import pandas as pd
@@ -13,8 +11,8 @@ from jax.random import key
 from jax.scipy.linalg import solve_triangular
 from jax.typing import ArrayLike
 
-from ..util.locs import LocationVars, lon_lat_columns
-from .kernel import GPKernel
+from ..util.locs import LocationVars, two_dimensional_coordinates
+from .kernel import GPKernel, KernelFactory
 
 _IDENTITY_BIJECTOR = tfb.Identity()
 
@@ -147,13 +145,19 @@ class ParamPredictiveProcessGP(lsl.Var):
         salt: float = 1e-6,
         amplitude: ArrayLike = 0.1,
         length_scale: ArrayLike = 0.1,
+        kernel: KernelFactory = tfk.MaternFiveHalves,
     ) -> pd.DataFrame:
         """Sample predictive-process draws in long tabular form.
+
+        Draws come from a zero-mean predictive-process GP with fixed
+        hyperparameters, as returned by ``sample_array``. Use it to see what
+        surfaces a kernel produces; it does not sample a fitted model.
 
         Parameters
         ----------
         locs
-            Ordered sample and inducing-location variables.
+            Ordered sample and inducing-location variables with two coordinate
+            columns.
         n
             Number of draws; ``1`` by default.
         seed
@@ -161,17 +165,28 @@ class ParamPredictiveProcessGP(lsl.Var):
         salt
             Diagonal covariance jitter; ``1e-6`` by default.
         amplitude
-            Initial GP amplitude.
+            GP amplitude, fixed for the draws; ``0.1`` by default.
         length_scale
-            Initial GP length scale.
+            GP length scale, fixed for the draws; ``0.1`` by default.
+        kernel
+            Kernel constructor; ``MaternFiveHalves`` by default, as in ``G`` and
+            ``H``.
 
         Returns
         -------
         samples :
             Long data frame with ``n * N`` rows and columns ``lon``, ``lat``,
             ``loc``, ``sample``, and ``value``. It is ready for plotting or grouped
-            summaries. Unit-sphere locations are reported as degrees in ``lon``
-            and ``lat``, with longitudes in ``(-180, 180]``.
+            summaries. ``lon`` and ``lat`` hold the two coordinate columns, and
+            ``loc`` indexes rows of ``locs.ordered``, i.e. locations in maximin
+            order, not in their original order.
+
+        Raises
+        ------
+        ValueError
+            If the locations do not have exactly two coordinate columns, e.g. after
+            ``from_2d_to_3d``. Use ``sample_array`` with ``long_df`` and the original
+            longitude/latitude for those.
 
         Examples
         --------
@@ -183,27 +198,20 @@ class ParamPredictiveProcessGP(lsl.Var):
 
         ```
         """
-        amplitude = jnp.asarray(amplitude)
-        length_scale = jnp.asarray(length_scale)
-
-        K = GPKernel(
-            tfk.ExponentiatedQuadratic,
+        coordinates = two_dimensional_coordinates(locs, "GPVar.sample_df")
+        draws = ParamPredictiveProcessGP.sample_array(
+            locs,
+            n=n,
+            seed=seed,
+            salt=salt,
             amplitude=amplitude,
             length_scale=length_scale,
-        )
-        var = ParamPredictiveProcessGP(
-            locs=deepcopy(locs),
-            gp_kernel=K,
-            name="v",
-            salt=salt,
+            kernel=kernel,
         )
 
-        model = lsl.Model([var], to_float32=False)
-        samples = model.sample(seed=key(seed), shape=(n, 1))
-        var_samples = var.predict(samples).squeeze(1)
-
-        df = pd.DataFrame(var_samples.T)
-        df["lon"], df["lat"] = lon_lat_columns(locs.ordered.value)
+        df = pd.DataFrame(draws.T)
+        df["lon"] = coordinates[:, 0]
+        df["lat"] = coordinates[:, 1]
         df = df.reset_index(names="loc")
 
         return df.melt(id_vars=["lon", "lat", "loc"], var_name="sample")
@@ -216,8 +224,13 @@ class ParamPredictiveProcessGP(lsl.Var):
         salt: float = 1e-6,
         amplitude: ArrayLike = 0.1,
         length_scale: ArrayLike = 0.1,
+        kernel: KernelFactory = tfk.MaternFiveHalves,
     ) -> Array:
         """Sample predictive-process draws as an array.
+
+        Draws come from a zero-mean predictive-process GP with fixed
+        hyperparameters and no bijector. Use it to see what surfaces a kernel
+        produces; it does not sample a fitted model.
 
         Parameters
         ----------
@@ -230,9 +243,12 @@ class ParamPredictiveProcessGP(lsl.Var):
         salt
             Diagonal covariance jitter; ``1e-6`` by default.
         amplitude
-            Initial GP amplitude.
+            GP amplitude, fixed for the draws; ``0.1`` by default.
         length_scale
-            Initial GP length scale.
+            GP length scale, fixed for the draws; ``0.1`` by default.
+        kernel
+            Kernel constructor; ``MaternFiveHalves`` by default, as in ``G`` and
+            ``H``.
 
         Returns
         -------
@@ -250,25 +266,21 @@ class ParamPredictiveProcessGP(lsl.Var):
 
         ```
         """
-        amplitude = jnp.asarray(amplitude)
-        length_scale = jnp.asarray(length_scale)
-
         K = GPKernel(
-            tfk.ExponentiatedQuadratic,
-            amplitude=amplitude,
-            length_scale=length_scale,
+            kernel,
+            amplitude=jnp.asarray(amplitude),
+            length_scale=jnp.asarray(length_scale),
         )
         var = ParamPredictiveProcessGP(
-            locs=deepcopy(locs),
+            locs=locs.copy(),
             gp_kernel=K,
             name="v",
             salt=salt,
         )
 
         model = lsl.Model([var], to_float32=False)
-        samples = model.sample(seed=key(seed), shape=(n, 1))
-        var_samples = var.predict(samples).squeeze(1)
-        return var_samples
+        samples = model.sample((n, 1), seed=key(seed))
+        return var.predict(samples).squeeze(1)
 
 
 GPVar = ParamPredictiveProcessGP

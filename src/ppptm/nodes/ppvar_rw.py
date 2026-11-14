@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
-
 import jax.numpy as jnp
 import liesel.model as lsl
 import pandas as pd
@@ -13,8 +11,8 @@ from jax.random import key
 from jax.scipy.linalg import solve_triangular
 from jax.typing import ArrayLike
 
-from ..util.locs import LocationVars, lon_lat_columns
-from .kernel import GPKernel
+from ..util.locs import LocationVars, two_dimensional_coordinates
+from .kernel import GPKernel, KernelFactory
 
 _IDENTITY_BIJECTOR = tfb.Identity()
 
@@ -213,13 +211,19 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         salt: float = 1e-6,
         amplitude: ArrayLike = 0.1,
         length_scale: ArrayLike = 0.1,
+        kernel: KernelFactory = tfk.MaternFiveHalves,
     ) -> pd.DataFrame:
         """Sample random-walk predictive-process draws in long tabular form.
+
+        Draws come from the zero-mean coefficient process with fixed
+        hyperparameters, as returned by ``sample_array``. Use it to see what
+        coefficient surfaces a kernel produces; it does not sample a fitted model.
 
         Parameters
         ----------
         locs
-            Ordered sample and inducing-location variables.
+            Ordered sample and inducing-location variables with two coordinate
+            columns.
         nparam
             Number of coefficients at each location; ``5`` by default and at least
             three.
@@ -230,17 +234,26 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         salt
             Diagonal covariance jitter; ``1e-6`` by default.
         amplitude
-            Initial GP amplitude.
+            GP amplitude, fixed for the draws; ``0.1`` by default.
         length_scale
-            Initial GP length scale.
+            GP length scale, fixed for the draws; ``0.1`` by default.
+        kernel
+            Kernel constructor; ``MaternFiveHalves`` by default, as in ``H``.
 
         Returns
         -------
         samples :
             Long data frame with ``n * N * nparam`` rows and columns ``lon``, ``lat``,
             ``loc``, ``D``, ``sample``, and ``value``. It is useful for plotting
-            coefficient surfaces by index. Unit-sphere locations are reported as
-            degrees in ``lon`` and ``lat``, with longitudes in ``(-180, 180]``.
+            coefficient surfaces by index. ``lon`` and ``lat`` hold the two
+            coordinate columns, and ``loc`` indexes rows of ``locs.ordered``, i.e.
+            locations in maximin order, not in their original order.
+
+        Raises
+        ------
+        ValueError
+            If the locations do not have exactly two coordinate columns, e.g. after
+            ``from_2d_to_3d``. Use ``sample_array`` for those.
 
         Examples
         --------
@@ -252,30 +265,24 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
 
         ```
         """
-        amplitude = jnp.asarray(amplitude)
-        length_scale = jnp.asarray(length_scale)
-
-        K = GPKernel(
-            tfk.ExponentiatedQuadratic, amplitude=amplitude, length_scale=length_scale
-        )
-        var = RandomWalkParamPredictiveProcessGP(
-            locs=deepcopy(locs),
+        coordinates = two_dimensional_coordinates(locs, "GPTMCoef.sample_df")
+        draws = RandomWalkParamPredictiveProcessGP.sample_array(
+            locs,
             nparam=nparam,
-            gp_kernel=K,
-            name="v",
+            n=n,
+            seed=seed,
             salt=salt,
+            amplitude=amplitude,
+            length_scale=length_scale,
+            kernel=kernel,
         )
 
-        model = lsl.Model([var], to_float32=False)
-        samples = model.sample(seed=key(seed), shape=(n, 1))
-        var_samples = var.predict(samples).squeeze(1)
-
-        n, nloc, D = var_samples.shape
-        var_samples_long = jnp.reshape(var_samples, (n, nloc * D))
-        df = pd.DataFrame(var_samples_long.T)
+        n, nloc, D = draws.shape
+        df = pd.DataFrame(jnp.reshape(draws, (n, nloc * D)).T)
         df["D"] = jnp.tile(jnp.arange(D), nloc)
         df["loc"] = jnp.repeat(jnp.arange(nloc), D)
-        df["lon"], df["lat"] = lon_lat_columns(locs.ordered.value[df["loc"].to_numpy()])
+        df["lon"] = coordinates[df["loc"].to_numpy(), 0]
+        df["lat"] = coordinates[df["loc"].to_numpy(), 1]
 
         return df.melt(id_vars=["lon", "lat", "loc", "D"], var_name="sample")
 
@@ -288,8 +295,13 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         salt: float = 1e-6,
         amplitude: ArrayLike = 0.1,
         length_scale: ArrayLike = 0.1,
+        kernel: KernelFactory = tfk.MaternFiveHalves,
     ) -> Array:
         """Sample random-walk predictive-process draws as an array.
+
+        Draws come from the zero-mean coefficient process with fixed
+        hyperparameters. Use it to see what coefficient surfaces a kernel
+        produces; it does not sample a fitted model.
 
         Parameters
         ----------
@@ -305,9 +317,11 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         salt
             Diagonal covariance jitter; ``1e-6`` by default.
         amplitude
-            Initial GP amplitude.
+            GP amplitude, fixed for the draws; ``0.1`` by default.
         length_scale
-            Initial GP length scale.
+            GP length scale, fixed for the draws; ``0.1`` by default.
+        kernel
+            Kernel constructor; ``MaternFiveHalves`` by default, as in ``H``.
 
         Returns
         -------
@@ -325,14 +339,13 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
 
         ```
         """
-        amplitude = jnp.asarray(amplitude)
-        length_scale = jnp.asarray(length_scale)
-
         K = GPKernel(
-            tfk.ExponentiatedQuadratic, amplitude=amplitude, length_scale=length_scale
+            kernel,
+            amplitude=jnp.asarray(amplitude),
+            length_scale=jnp.asarray(length_scale),
         )
         var = RandomWalkParamPredictiveProcessGP(
-            locs=deepcopy(locs),
+            locs=locs.copy(),
             nparam=nparam,
             gp_kernel=K,
             name="v",
@@ -340,9 +353,8 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         )
 
         model = lsl.Model([var], to_float32=False)
-        samples = model.sample(seed=key(seed), shape=(n, 1))
-        var_samples = var.predict(samples).squeeze(1)
-        return var_samples
+        samples = model.sample((n, 1), seed=key(seed))
+        return var.predict(samples).squeeze(1)
 
 
 SpatPTMCoef = RandomWalkParamPredictiveProcessGP

@@ -193,24 +193,22 @@ class Locations:
         return jnp.stack(jnp.broadcast_arrays(loc1, loc2, loc3), axis=-1)
 
 
-def lon_lat_columns(coordinates: ArrayLike) -> tuple[Array, Array]:
-    """Return longitude/latitude-style columns for tabular summaries.
+def two_dimensional_coordinates(locs: LocationVars, caller: str) -> Array:
+    """Return sample-location coordinates, requiring exactly two columns.
 
-    Three-column coordinates whose rows all have unit length, as produced by
-    ``Locations.from_2d_to_3d``, are converted back to degrees, with longitudes in
-    ``(-180, 180]``. For other coordinates the first two columns are returned
-    unchanged.
+    Raises
+    ------
+    ValueError
+        If the sample locations do not have exactly two coordinate columns.
     """
-    coordinates = jnp.asarray(coordinates)
-    on_sphere = coordinates.shape[-1] == 3 and bool(
-        jnp.allclose(jnp.linalg.norm(coordinates, axis=-1), 1.0, atol=1e-5)
-    )
-    if on_sphere:
-        x, y, z = coordinates[..., 0], coordinates[..., 1], coordinates[..., 2]
-        lon = jnp.degrees(jnp.arctan2(y, x))
-        lat = jnp.degrees(jnp.arcsin(jnp.clip(z, -1.0, 1.0)))
-        return lon, lat
-    return coordinates[..., 0], coordinates[..., 1]
+    coordinates = jnp.asarray(locs.sample_locs.value)
+    if coordinates.ndim != 2 or coordinates.shape[-1] != 2:
+        raise ValueError(
+            f"{caller} needs 2-D locations with two coordinate columns; got "
+            f"coordinates with shape {coordinates.shape}. For other locations, use "
+            "sample_array and long_df with your own plotting coordinates."
+        )
+    return coordinates
 
 
 @dataclass(init=False)
