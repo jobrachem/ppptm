@@ -171,7 +171,7 @@ class ParamPredictiveProcessGP(lsl.Var):
             Long data frame with ``n * N`` rows and columns ``lon``, ``lat``,
             ``loc``, ``sample``, and ``value``. It is ready for plotting or grouped
             summaries. Unit-sphere locations are reported as degrees in ``lon``
-            and ``lat``.
+            and ``lat``, with longitudes in ``(-180, 180]``.
 
         Examples
         --------

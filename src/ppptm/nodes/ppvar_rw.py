@@ -240,7 +240,7 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
             Long data frame with ``n * N * nparam`` rows and columns ``lon``, ``lat``,
             ``loc``, ``D``, ``sample``, and ``value``. It is useful for plotting
             coefficient surfaces by index. Unit-sphere locations are reported as
-            degrees in ``lon`` and ``lat``.
+            degrees in ``lon`` and ``lat``, with longitudes in ``(-180, 180]``.
 
         Examples
         --------

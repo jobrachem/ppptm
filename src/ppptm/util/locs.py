@@ -196,12 +196,16 @@ class Locations:
 def lon_lat_columns(coordinates: ArrayLike) -> tuple[Array, Array]:
     """Return longitude/latitude-style columns for tabular summaries.
 
-    Unit-sphere coordinates with three columns, as produced by
-    ``Locations.from_2d_to_3d``, are converted back to degrees. For other
-    coordinates the first two columns are returned unchanged.
+    Three-column coordinates whose rows all have unit length, as produced by
+    ``Locations.from_2d_to_3d``, are converted back to degrees, with longitudes in
+    ``(-180, 180]``. For other coordinates the first two columns are returned
+    unchanged.
     """
     coordinates = jnp.asarray(coordinates)
-    if coordinates.shape[-1] == 3:
+    on_sphere = coordinates.shape[-1] == 3 and bool(
+        jnp.allclose(jnp.linalg.norm(coordinates, axis=-1), 1.0, atol=1e-5)
+    )
+    if on_sphere:
         x, y, z = coordinates[..., 0], coordinates[..., 1], coordinates[..., 2]
         lon = jnp.degrees(jnp.arctan2(y, x))
         lat = jnp.degrees(jnp.arcsin(jnp.clip(z, -1.0, 1.0)))
