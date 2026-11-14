@@ -42,5 +42,5 @@ predictive-process spatial parameters. Spatial kernels support shared or
 dimension-specific length scales, and model fitting supports NaN masking and
 location mini-batches.
 
-Continue with the [API reference](api.md), or see the
+Continue with the [API reference](api/index.md), or see the
 [application notebooks](https://github.com/jobrachem/ppptm/tree/main/demo).

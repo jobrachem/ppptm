@@ -5,6 +5,8 @@ theme:
   variant: modern
   features:
     - content.code.copy
+    - navigation.indexes
+    - navigation.sections
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -47,4 +49,12 @@ plugins:
 
 nav:
   - Home: index.md
-  - API reference: api.md
+  - API reference:
+      - api/index.md
+      - Model: api/model.md
+      - Marginals: api/marginals.md
+      - Coefficients: api/coefficients.md
+      - Locations: api/locations.md
+      - Gaussian processes: api/gaussian-processes.md
+      - Composite model: api/composite.md
+      - Data and plotting: api/data.md
