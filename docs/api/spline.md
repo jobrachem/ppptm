@@ -1,4 +1,7 @@
-# Coefficients: `H`
+# Spline part: `H`
+
+`H` builds the spatially varying spline coefficients of the spline part `h` of the
+marginal transformation `h(g(y))`.
 
 **Class**
 
