@@ -1,28 +1,79 @@
 from __future__ import annotations
 
-from copy import deepcopy
-
 import jax.numpy as jnp
 import liesel.model as lsl
 import pandas as pd
 import tensorflow_probability.substrates.jax.bijectors as tfb
 import tensorflow_probability.substrates.jax.distributions as tfd
 import tensorflow_probability.substrates.jax.math.psd_kernels as tfk
+from jax import Array
 from jax.random import key
 from jax.scipy.linalg import solve_triangular
 from jax.typing import ArrayLike
 
-from ..util.locs import LocationVars
-from .kernel import GPKernel
+from ..util.locs import LocationVars, two_dimensional_coordinates
+from .kernel import GPKernel, KernelFactory
+
+_IDENTITY_BIJECTOR = tfb.Identity()
 
 
 def brownian_motion_mat(nrows: int, ncols: int):
+    """Construct a Brownian-motion covariance matrix.
+
+    Parameters
+    ----------
+    nrows, ncols
+        Matrix dimensions.
+
+    Returns
+    -------
+    matrix :
+        Matrix whose entry ``(i, j)`` is ``min(i + 1, j + 1)``.
+
+    Examples
+    --------
+    ```pycon
+    >>> from ppptm.nodes.ppvar_rw import brownian_motion_mat
+    >>> brownian_motion_mat(2, 2).tolist()
+    [[1, 1], [1, 2]]
+
+    ```
+    """
     r = jnp.arange(nrows)[:, None] + 1
     c = jnp.arange(ncols)[None, :] + 1
     return jnp.minimum(r, c)
 
 
 def rw_weight_matrix(D: int):
+    """Construct the centered random-walk weight matrix for ``D`` coefficients.
+
+    Parameters
+    ----------
+    D
+        Number of transformation coefficients.
+
+    Returns
+    -------
+    weights :
+        Centered random-walk weight matrix with shape ``(D - 1, D - 2)``. Multiplying
+        unconstrained increments by this matrix produces sum-to-zero coefficients.
+
+    Notes
+    -----
+    ``D`` must be at least three for the Brownian covariance and Cholesky factor to
+    be nonempty.
+
+    Examples
+    --------
+    ```pycon
+    >>> import jax.numpy as jnp
+    >>> from ppptm.nodes.ppvar_rw import rw_weight_matrix
+    >>> weights = rw_weight_matrix(5)
+    >>> assert weights.shape == (4, 3)
+    >>> assert jnp.allclose(weights.sum(axis=0), 0.0, atol=1e-6)
+
+    ```
+    """
     C = jnp.eye(D - 1) - jnp.ones(D - 1) / (D - 1)
     B = brownian_motion_mat(D - 2, D - 2)
     L = jnp.linalg.cholesky(B, upper=False)
@@ -31,12 +82,59 @@ def rw_weight_matrix(D: int):
 
 
 class RandomWalkParamPredictiveProcessGP(lsl.Var):
+    """Spatial predictive-process coefficients with random-walk structure.
+
+    Parameters
+    ----------
+    gp_kernel
+        Kernel whose amplitude and length scale define spatial dependence.
+    locs
+        Ordered sample and inducing-location variables with shapes ``(N, d)`` and
+        ``(M, d)``.
+    nparam
+        Number ``D`` of random-walk coefficients at each location. ``D`` must be at
+        least three.
+    bijector
+        Transformation applied elementwise to the scaled coefficient process;
+        identity by default.
+    name
+        Liesel node name.
+    salt
+        Diagonal jitter added before Cholesky decomposition; ``1e-6`` by default.
+
+    Attributes
+    ----------
+    latent_var
+        Standard-normal latent variables at inducing locations.
+    Kuu, Kdu
+        Inducing-to-inducing and sample-to-inducing covariance nodes.
+
+    Notes
+    -----
+    Spatial projection and coefficient smoothing are separable: a predictive GP
+    projects ``M * D`` latent values to ``N`` locations, while the Cholesky factor
+    ``W`` of the Brownian-motion covariance ``S[i, j] = min(i + 1, j + 1)`` couples
+    the ``D`` coefficients. Here ``W`` is lower triangular with entries of one,
+    so ``W @ W.T = S``. The resulting node has shape ``(N, D)``.
+
+    Examples
+    --------
+    ```pycon
+    >>> import tensorflow_probability.substrates.jax.math.psd_kernels as tfk
+    >>> from ppptm import GPKernel, RandomWalkParamPredictiveProcessGP, unit_grid_vars
+    >>> gp = RandomWalkParamPredictiveProcessGP(GPKernel(tfk.ExponentiatedQuadratic), unit_grid_vars(2), 3, name="gp")
+    >>> gp.value.shape
+    (4, 3)
+
+    ```
+    """
+
     def __init__(
         self,
         gp_kernel: GPKernel,
         locs: LocationVars,
         nparam: int,
-        bijector: tfb.Bijector = tfb.Identity(),
+        bijector: tfb.Bijector = _IDENTITY_BIJECTOR,
         name: str = "",
         salt: float = 1e-6,
     ) -> None:
@@ -56,7 +154,7 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
             name=f"{name}_Kdu",
         ).update()
 
-        W = brownian_motion_mat(D, D)
+        W = jnp.tril(jnp.ones((D, D)))  # Exact Cholesky factor of Brownian covariance.
 
         n_inducing_locs = Kuu.value.shape[0]
         M = n_inducing_locs
@@ -73,7 +171,7 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
             Kuu: (M, M)
             Kdu: (N, M)
 
-            Returns: (N,)
+            Returns: (N, D)
             """
             Kuu = Kuu.at[jnp.diag_indices(M)].add(salt)
             L = jnp.linalg.cholesky(Kuu)  # (M x M)
@@ -82,7 +180,7 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
             B = solve_triangular(L, Bt, trans="T", lower=True)  # (M, D)
             delta_mat = (W @ B.T) @ Kdu.T  # (D, D) @ (D, M) @ (M, N) -> (D, N)
             delta_mat = delta_mat * jnp.expand_dims(amplitude, 0)
-            return delta_mat.T  # (N, D)
+            return bijector.forward(delta_mat.T)  # (N, D)
 
         super().__init__(
             lsl.Calc(
@@ -113,33 +211,78 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         salt: float = 1e-6,
         amplitude: ArrayLike = 0.1,
         length_scale: ArrayLike = 0.1,
+        kernel: KernelFactory = tfk.MaternFiveHalves,
     ) -> pd.DataFrame:
-        amplitude = jnp.asarray(amplitude)
-        length_scale = jnp.asarray(length_scale)
+        """Sample random-walk predictive-process draws in long tabular form.
 
-        K = GPKernel(
-            tfk.ExponentiatedQuadratic, amplitude=amplitude, length_scale=length_scale
-        )
-        var = RandomWalkParamPredictiveProcessGP(
-            locs=deepcopy(locs),
+        Draws come from the zero-mean coefficient process with fixed
+        hyperparameters, as returned by ``sample_array``. Use it to see what
+        coefficient surfaces a kernel produces; it does not sample a fitted model.
+
+        Parameters
+        ----------
+        locs
+            Ordered sample and inducing-location variables with two coordinate
+            columns.
+        nparam
+            Number of coefficients at each location; ``5`` by default and at least
+            three.
+        n
+            Number of draws; ``1`` by default.
+        seed
+            JAX random seed; ``1`` by default, making repeated calls deterministic.
+        salt
+            Diagonal covariance jitter; ``1e-6`` by default.
+        amplitude
+            GP amplitude, fixed for the draws; ``0.1`` by default.
+        length_scale
+            GP length scale, fixed for the draws; ``0.1`` by default.
+        kernel
+            Kernel constructor; ``MaternFiveHalves`` by default, as in ``H``.
+
+        Returns
+        -------
+        samples :
+            Long data frame with ``n * N * nparam`` rows and columns ``lon``, ``lat``,
+            ``loc``, ``D``, ``sample``, and ``value``. It is useful for plotting
+            coefficient surfaces by index. ``lon`` and ``lat`` hold the two
+            coordinate columns, and ``loc`` indexes rows of ``locs.ordered``, i.e.
+            locations in maximin order, not in their original order.
+
+        Raises
+        ------
+        ValueError
+            If the locations do not have exactly two coordinate columns, e.g. after
+            ``from_2d_to_3d``. Use ``sample_array`` for those.
+
+        Examples
+        --------
+        ```pycon
+        >>> from ppptm import GPTMCoef, unit_grid_vars
+        >>> draws = GPTMCoef.sample_df(unit_grid_vars(2), nparam=3, n=2, seed=7)
+        >>> assert draws.shape == (24, 6)
+        >>> assert draws["D"].nunique() == 3
+
+        ```
+        """
+        coordinates = two_dimensional_coordinates(locs, "GPTMCoef.sample_df")
+        draws = RandomWalkParamPredictiveProcessGP.sample_array(
+            locs,
             nparam=nparam,
-            gp_kernel=K,
-            name="v",
+            n=n,
+            seed=seed,
             salt=salt,
+            amplitude=amplitude,
+            length_scale=length_scale,
+            kernel=kernel,
         )
 
-        model = lsl.Model([var], to_float32=False)
-        samples = model.sample(seed=key(seed), shape=(n, 1))
-        var_samples = var.predict(samples).squeeze(1)
-
-        n, nloc, D = var_samples.shape
-        var_samples_long = jnp.reshape(var_samples, (n, nloc * D))
-        df = pd.DataFrame(var_samples_long.T)
+        n, nloc, D = draws.shape
+        df = pd.DataFrame(jnp.reshape(draws, (n, nloc * D)).T)
         df["D"] = jnp.tile(jnp.arange(D), nloc)
         df["loc"] = jnp.repeat(jnp.arange(nloc), D)
-        df["lon"] = locs.ordered.value[df["loc"].to_numpy()][:, 0]
-        df["lat"] = locs.ordered.value[df["loc"].to_numpy()][:, 1]
-        df.melt(id_vars=["D", "loc", "lon", "lat"], var_name="sample")
+        df["lon"] = coordinates[df["loc"].to_numpy(), 0]
+        df["lat"] = coordinates[df["loc"].to_numpy(), 1]
 
         return df.melt(id_vars=["lon", "lat", "loc", "D"], var_name="sample")
 
@@ -152,15 +295,57 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         salt: float = 1e-6,
         amplitude: ArrayLike = 0.1,
         length_scale: ArrayLike = 0.1,
-    ) -> pd.DataFrame:
-        amplitude = jnp.asarray(amplitude)
-        length_scale = jnp.asarray(length_scale)
+        kernel: KernelFactory = tfk.MaternFiveHalves,
+    ) -> Array:
+        """Sample random-walk predictive-process draws as an array.
 
+        Draws come from the zero-mean coefficient process with fixed
+        hyperparameters. Use it to see what coefficient surfaces a kernel
+        produces; it does not sample a fitted model.
+
+        Parameters
+        ----------
+        locs
+            Ordered sample and inducing-location variables.
+        nparam
+            Number of coefficients at each location; ``5`` by default and at least
+            three.
+        n
+            Number of draws; ``1`` by default.
+        seed
+            JAX random seed; ``1`` by default, making repeated calls deterministic.
+        salt
+            Diagonal covariance jitter; ``1e-6`` by default.
+        amplitude
+            GP amplitude, fixed for the draws; ``0.1`` by default.
+        length_scale
+            GP length scale, fixed for the draws; ``0.1`` by default.
+        kernel
+            Kernel constructor; ``MaternFiveHalves`` by default, as in ``H``.
+
+        Returns
+        -------
+        samples :
+            Array with shape ``(n, N, nparam)``. Use it for simulation or numerical
+            summaries; its location axis follows ``locs.ordered``.
+
+        Examples
+        --------
+        ```pycon
+        >>> from ppptm import GPTMCoef, unit_grid_vars
+        >>> draws = GPTMCoef.sample_array(unit_grid_vars(2), nparam=3, n=2, seed=7)
+        >>> assert draws.shape == (2, 4, 3)
+        >>> assert (draws == GPTMCoef.sample_array(unit_grid_vars(2), nparam=3, n=2, seed=7)).all()
+
+        ```
+        """
         K = GPKernel(
-            tfk.ExponentiatedQuadratic, amplitude=amplitude, length_scale=length_scale
+            kernel,
+            amplitude=jnp.asarray(amplitude),
+            length_scale=jnp.asarray(length_scale),
         )
         var = RandomWalkParamPredictiveProcessGP(
-            locs=deepcopy(locs),
+            locs=locs.copy(),
             nparam=nparam,
             gp_kernel=K,
             name="v",
@@ -168,9 +353,8 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         )
 
         model = lsl.Model([var], to_float32=False)
-        samples = model.sample(seed=key(seed), shape=(n, 1))
-        var_samples = var.predict(samples).squeeze(1)
-        return var_samples
+        samples = model.sample((n, 1), seed=key(seed))
+        return var.predict(samples).squeeze(1)
 
 
 SpatPTMCoef = RandomWalkParamPredictiveProcessGP

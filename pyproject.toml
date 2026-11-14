@@ -22,10 +22,9 @@ classifiers = [
 ]
 
 dependencies = [
-    "interpax>=0.3.10",
-    "liesel @ git+https://github.com/liesel-devs/liesel.git",
-    "liesel_ptm @ git+https://github.com/liesel-devs/liesel-ptm.git",
-    "batram @ git+https://github.com/jobrachem/batram.git@port-legmods-updates",
+    "liesel",
+    "liesel-ptm",
+    "batram @ git+https://github.com/katzfuss-group/batram.git",
     "plotnine"
 ]
 
@@ -38,22 +37,19 @@ dev = [
     "black",
     "flake8",
     "isort",
-    "mypy",
     "pdoc",
     "pre-commit",
     "pytest",
     "pytest-cov",
     "pyupgrade",
     "plotnine",
-    "ipykernel"
+    "ipykernel",
+    "ruff>=0.17.5",
+    "ty>=0.0.104",
 ]
 docs = [
-    "sphinx>=7.2.6",
-    "sphinx-autodoc-typehints>=2.0",
-    "sphinx-book-theme>=1.1.0",
-    "sphinx-copybutton>=0.5",
-    "sphinx-remove-toctrees>=0.0.3",
-    "myst-nb",
+    "mkdocstrings[python]>=1.0.6",
+    "zensical>=0.0.53",
 ]
 
 # Hatch configuration to pull the version from ppptm/__about__.py
@@ -75,6 +71,7 @@ max-line-length = 90
 extend-ignore = ["E203"]
 
 [tool.pytest.ini_options]
+addopts = ["--doctest-glob=*.md"]
 filterwarnings = [
     "ignore:.*`product` is deprecated:DeprecationWarning",
     "ignore:.*jax.core.Shape is deprecated:DeprecationWarning",
@@ -87,11 +84,9 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 
-[tool.mypy]
-files = ["src/ppptm", "tests"]
-ignore_missing_imports = true
-scripts_are_modules = true
-disable_error_code = "annotation-unchecked"
-
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.uv.sources]
+liesel-ptm = { git = "https://github.com/liesel-devs/liesel-ptm.git", branch = "codex/cleanup" }
+liesel = { git = "https://github.com/liesel-devs/liesel.git", branch = "vi-modernization" }
