@@ -1,5 +1,7 @@
 # Model: `Model`
 
+`Model` is the marginal transformation model `h(g(y))` at each location.
+
 **Class**
 
 ::: ppptm.Model
