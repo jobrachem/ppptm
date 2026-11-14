@@ -53,8 +53,8 @@ nav:
       - api/index.md
       - Marginal model:
           - Model: api/model.md
-          - Parametric part: api/parametric.md
-          - Spline part: api/spline.md
+          - "Parametric part: G": api/parametric.md
+          - "Spline part: H": api/spline.md
       - Locations: api/locations.md
       - Gaussian processes: api/gaussian-processes.md
       - Composite model: api/composite.md
