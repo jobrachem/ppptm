@@ -1,4 +1,6 @@
-# Marginals: `G`
+# Parametric part: `G`
+
+`G` builds the parametric part `g` of the marginal transformation `h(g(y))`.
 
 **Class**
 

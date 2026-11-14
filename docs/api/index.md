@@ -9,12 +9,11 @@ Gaussian-process classes are available when its defaults need customization.
 
 The reference is split by topic:
 
-- [Model](model.md): `Model`, which builds, fits and evaluates a transformation
-  model.
-- [Marginals](marginals.md): `G`, which builds the parametric marginal
-  distribution.
-- [Coefficients](coefficients.md): `H`, which builds the spatial spline
-  coefficients.
+- Marginal model, the transformation `h(g(y))` at each location:
+  - [Model](model.md): `Model`, which builds, fits and evaluates it.
+  - [Parametric part](parametric.md): `G`, which builds the parametric part `g`.
+  - [Spline part](spline.md): `H`, which builds the spatial spline coefficients
+    of `h`.
 - [Locations](locations.md): `Locations`, `LocationVars` and grid helpers for
   sample and inducing locations.
 - [Gaussian processes](gaussian-processes.md): `GPKernel` and the
