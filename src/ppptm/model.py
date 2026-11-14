@@ -287,7 +287,8 @@ class Model:
     Raises
     ------
     ValueError
-        If response and coefficient nodes describe different numbers of locations,
+        If ``y`` is not two-dimensional with one column per sample location, if
+        response and coefficient nodes describe different numbers of locations,
         if NaN masking is requested with non-finite supplied marginal parameters, or
         if ``locs``, ``g_dist`` or ``coef`` already belong to another model.
 
@@ -327,6 +328,14 @@ class Model:
         scaled: bool = False,
     ):
         knots = jnp.asarray(knots)
+        y_shape = jnp.shape(y)
+        nloc_locs = jnp.shape(locs.sample_locs.value)[0]
+        if len(y_shape) != 2 or y_shape[1] != nloc_locs:
+            raise ValueError(
+                "y must have shape (nobs, nloc) with one column per sample location; "
+                f"got shape {y_shape} for {nloc_locs} locations."
+            )
+
         if g_dist is None:
             g_dist = G(y, locs).new_gaussian()
             locscale = True
@@ -618,7 +627,7 @@ class Model:
         optimizer: optax.GradientTransformation | None = None,
         progress_bar: bool = False,
         batch_size: int | None = None,
-        seed: int | None = None,
+        seed: int | None = 0,
         shuffle_batches: bool = True,
         scale_loss: bool = False,
         validation_strategy: Literal["log_lik", "log_prob"] = "log_lik",
@@ -669,13 +678,15 @@ class Model:
             number of locations are allowed; a shuffled remainder is omitted in each
             epoch.
         seed
-            Random seed used by Liesel for batching and optimizer bookkeeping.
+            Random seed used by Liesel for batching and optimizer bookkeeping;
+            ``0`` by default, so repeated fits are reproducible. ``None`` uses the
+            current time.
         shuffle_batches
             Whether to shuffle location batches at the start of each epoch. Ignored
             when ``batch_size is None``.
         scale_loss
             Whether Liesel's negative log-probability loss should be divided by the
-            training sample size.
+            number of training fields, i.e. the rows of the training response.
         validation_strategy
             Validation objective passed to Liesel. ``"log_lik"`` uses only the
             likelihood; ``"log_prob"`` also includes the log prior.
@@ -751,50 +762,34 @@ class Model:
             response_validate = {response_name: response_validation}
             n_validate_response = validation_shape[0]
 
-        response_split = loptim.PositionSplit(
+        batch_position_keys = [response_name]
+        batch_axes = {response_name: 1}
+
+        # Sample locations are shared by every split part, not split along response
+        # rows. As passthrough data they stay out of the training sample size, which
+        # is the number of training fields, but can still be batched by location.
+        passthrough = {}
+        if sample_locs_name in self.graph.vars:
+            passthrough[sample_locs_name] = sample_locs.value
+            batch_position_keys.append(sample_locs_name)
+            batch_axes[sample_locs_name] = 0
+
+        split = loptim.PositionSplit(
             Position(response_train),
             Position(response_validate),
             Position({}),
             self.nobs,
             n_validate_response,
             0,
+            passthrough=Position(passthrough),
         )
 
-        batch_position_keys = [response_name]
-        batch_axes = {response_name: 1}
-        split: Any = response_split
-
-        if sample_locs_name in self.graph.vars:
-            sample_locs_train = {sample_locs_name: sample_locs.value}
-            sample_locs_validate = (
-                {sample_locs_name: sample_locs.value}
-                if response_validation is not None
-                else {}
-            )
-            n_validate_locs = self.nloc if response_validation is not None else 0
-            sample_locs_split = loptim.PositionSplit(
-                Position(sample_locs_train),
-                Position(sample_locs_validate),
-                Position({}),
-                self.nloc,
-                n_validate_locs,
-                0,
-            )
-            split = loptim.PositionSplitManager([response_split, sample_locs_split])
-            batch_position_keys.append(sample_locs_name)
-            batch_axes[sample_locs_name] = 0
-
-        location_batches = loptim.Batches(
+        batches = loptim.Batches(
             batch_position_keys,
             self.nloc,
             batch_size,
             shuffle_batches if batch_size is not None else False,
             batch_axes,
-        )
-        batches: Any = (
-            loptim.BatchManager([location_batches])
-            if isinstance(split, loptim.PositionSplitManager)
-            else location_batches
         )
         opt = loptim.Optimizer(
             self.parameters,
@@ -897,15 +892,49 @@ class Model:
                     f"'newdata': {list(overlap)}"
                 )
 
-            state = self.graph.update_state(samples | (newdata or {}))
+            sample_locs_name = self.locs.sample_locs.name
+            moves_locations = newdata is not None and (
+                sample_locs_name in newdata
+                and jnp.shape(newdata[sample_locs_name])
+                != jnp.shape(self.locs.sample_locs.value)
+            )
+            if not moves_locations:
+                state = self.graph.update_state(samples | (newdata or {}))
+                inputs = {
+                    name: state[
+                        node.var.value_node.name if node.var is not None else node.name
+                    ].value
+                    for name, node in dist_node.kwinputs.items()
+                }
+                return dist_node.partial_dist_class(**inputs)
+
+            # Updating the whole graph would also evaluate the training response at
+            # the new locations. Use the posterior path with one leading sample axis
+            # instead, which predicts only the distribution inputs, then drop it.
+            expanded = {
+                name: jnp.expand_dims(jnp.asarray(value), 0)
+                for name, value in samples.items()
+            }
+            inputs = self._posterior_inputs(
+                dist_node, expanded, newdata, (1,), expand_scalars=False
+            )
             inputs = {
-                name: state[
-                    node.var.value_node.name if node.var is not None else node.name
-                ].value
-                for name, node in dist_node.kwinputs.items()
+                name: value if name == "coef" and jnp.ndim(value) == 0 else value[0]
+                for name, value in inputs.items()
             }
             return dist_node.partial_dist_class(**inputs)
 
+        inputs = self._posterior_inputs(dist_node, samples, newdata, sample_shape)
+        return dist_node.partial_dist_class(**inputs)
+
+    def _posterior_inputs(
+        self,
+        dist_node: HDist,
+        samples: dict[str, Array],
+        newdata: dict[str, ArrayLike] | None,
+        sample_shape: tuple[int, ...],
+        expand_scalars: bool = True,
+    ) -> dict[str, Array]:
         inputs = {}
         predict = {}
         fixed = {}
@@ -955,11 +984,12 @@ class Model:
 
         # Shared scalar parameters still need a location axis after posterior axes.
         # Coefficients retain their (location, basis) axes or scalar identity sentinel.
-        for input_name, value in inputs.items():
-            if input_name != "coef" and jnp.ndim(value) == len(sample_shape):
-                inputs[input_name] = jnp.expand_dims(value, axis=-1)
+        if expand_scalars:
+            for input_name, value in inputs.items():
+                if input_name != "coef" and jnp.ndim(value) == len(sample_shape):
+                    inputs[input_name] = jnp.expand_dims(value, axis=-1)
 
-        return dist_node.partial_dist_class(**inputs)
+        return inputs
 
     def _sample_shape(self, samples: dict[str, Array]) -> tuple[int, ...]:
         for name, value in samples.items():

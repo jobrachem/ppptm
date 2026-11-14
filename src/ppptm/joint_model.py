@@ -285,8 +285,10 @@ class CompositeTransformations:
         Notes
         -----
         Sampling draws standard-normal innovations, applies Batram's inverse map with
-        nugget sampling, then applies ``marginal.hgi``. When conditioning and
-        ``use_marginal=True``, the fixed prefix is transformed before inversion.
+        nugget sampling, then applies ``marginal.hgi`` when ``use_marginal=True``.
+        When conditioning and ``use_marginal=True``, the fixed prefix is transformed
+        before inversion. With ``use_marginal=False``, draws stay on the raw response
+        scale that the dependence model was trained on.
 
         ``key`` only seeds the standard-normal innovations. Batram samples the nugget
         with torch's global random state, so the same ``key`` gives different draws
@@ -335,6 +337,7 @@ class CompositeTransformations:
             )
             zt = zt.numpy()
 
-        y = self.marginal.hgi(zt)
-
-        return y
+        if not self.use_marginal:
+            # The dependence model was trained on the raw responses.
+            return jnp.asarray(zt)
+        return self.marginal.hgi(zt)

@@ -61,3 +61,12 @@ def test_amplitude_scales_the_field_inside_the_bijector():
         return value.max() / value.min()
 
     assert spread(0.1) < spread(1.0) < spread(2.0)
+
+
+def test_sample_df_reports_lon_lat_for_sphere_locations():
+    lonlat = jnp.array([[-100.0, 10.0], [-90.0, 20.0], [-80.0, 30.0], [-70.0, 40.0]])
+    sphere = gptm.LocationVars.new_from(lonlat, n_subset=2, from_2d_to_3d=True)
+
+    df = gptm.GPVar.sample_df(sphere, n=1)
+    pairs = {(round(lon, 3), round(lat, 3)) for lon, lat in zip(df["lon"], df["lat"])}
+    assert pairs == {(round(float(a), 3), round(float(b), 3)) for a, b in lonlat}

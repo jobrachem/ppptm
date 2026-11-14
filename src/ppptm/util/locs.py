@@ -23,8 +23,9 @@ class Locations:
         Permutation that orders ``unordered`` for the predictive process.
     n_subset
         Number of leading ordered locations used as inducing locations. Defaults to
-        all locations and must be at least one. Predictive-process cost grows with
-        this value, while approximation error generally decreases.
+        all locations and must be at least one; larger values are capped at the
+        number of locations. Predictive-process cost grows with this value, while
+        approximation error generally decreases.
 
     Attributes
     ----------
@@ -55,11 +56,15 @@ class Locations:
     n_subset: int | None = None
 
     def __post_init__(self):
+        nloc = self.unordered.shape[0]
         if self.n_subset is None:
-            self.n_subset = self.unordered.shape[0]
+            self.n_subset = nloc
 
         if not self.n_subset >= 1:
             raise ValueError(f"n_subset must be >= 1, got {self.n_subset}")
+        # More inducing locations than locations are not available; cap the request
+        # so that n_subset matches the actual number of inducing locations.
+        self.n_subset = min(int(self.n_subset), int(nloc))
 
     @classmethod
     def new_from_unordered(
@@ -117,8 +122,8 @@ class Locations:
     def ordered_subset(self):
         """Leading ordered coordinates used as inducing locations.
 
-        The result has shape ``(n_subset, ndim)`` (or fewer rows when
-        ``n_subset > nloc``) and provides the low-rank support for predictive GPs.
+        The result has shape ``(n_subset, ndim)`` and provides the low-rank support
+        for predictive GPs.
 
         Examples
         --------
@@ -186,6 +191,22 @@ class Locations:
         loc3 = jnp.sin(lat_)
 
         return jnp.stack(jnp.broadcast_arrays(loc1, loc2, loc3), axis=-1)
+
+
+def lon_lat_columns(coordinates: ArrayLike) -> tuple[Array, Array]:
+    """Return longitude/latitude-style columns for tabular summaries.
+
+    Unit-sphere coordinates with three columns, as produced by
+    ``Locations.from_2d_to_3d``, are converted back to degrees. For other
+    coordinates the first two columns are returned unchanged.
+    """
+    coordinates = jnp.asarray(coordinates)
+    if coordinates.shape[-1] == 3:
+        x, y, z = coordinates[..., 0], coordinates[..., 1], coordinates[..., 2]
+        lon = jnp.degrees(jnp.arctan2(y, x))
+        lat = jnp.degrees(jnp.arcsin(jnp.clip(z, -1.0, 1.0)))
+        return lon, lat
+    return coordinates[..., 0], coordinates[..., 1]
 
 
 @dataclass(init=False)
@@ -384,7 +405,10 @@ class LocationVars:
 
     @classmethod
     def new_from(
-        cls, unordered: ArrayLike, n_subset: int = -1, from_2d_to_3d: bool = False
+        cls,
+        unordered: ArrayLike,
+        n_subset: int | None = None,
+        from_2d_to_3d: bool = False,
     ) -> LocationVars:
         """Create ordered Liesel location variables from raw coordinates.
 
@@ -393,9 +417,8 @@ class LocationVars:
         unordered
             Coordinates with locations along the first axis.
         n_subset
-            Number of locations to use as inducing locations. Pass an integer of at
-            least one; the signature's ``-1`` default is not accepted by
-            ``Locations`` validation.
+            Number of locations to use as inducing locations; ``None`` (default)
+            uses all locations. Values above the number of locations are capped.
         from_2d_to_3d
             Whether longitude/latitude inputs should be embedded on the unit sphere.
 

@@ -112,3 +112,21 @@ def test_old_latent_conversion_preserves_coefficients():
 
     var.latent_var.value = jnp.asarray((old_latent @ weights).ravel())
     np.testing.assert_allclose(var.update().value, old_coef, rtol=2e-5, atol=2e-6)
+
+
+def test_random_walk_gp_applies_its_bijector():
+    import tensorflow_probability.substrates.jax.bijectors as tfb
+
+    def build(bijector):
+        gp = gptm.RandomWalkParamPredictiveProcessGP(
+            gptm.GPKernel(tfk.ExponentiatedQuadratic),
+            gptm.unit_grid_vars(2),
+            3,
+            bijector=bijector,
+            name="gp",
+        )
+        gp.latent_var.value = normal(key(4), gp.latent_var.value.shape)
+        gp.update()
+        return gp.value
+
+    assert jnp.allclose(build(tfb.Exp()), jnp.exp(build(tfb.Identity())), rtol=1e-5)

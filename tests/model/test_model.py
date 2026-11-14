@@ -380,3 +380,47 @@ def test_second_model_on_same_locs_explains_how_to_copy():
 
     flexible = gptm.Model.new_HG(response, shared.copy(), nparam=6)
     assert baseline.graph is not flexible.graph
+
+
+def test_unbatched_position_predicts_at_new_locations():
+    response = normal(key(12), (4, 9))
+    model = gptm.Model.new_HG(response, gptm.unit_grid_vars(ngrid=3), nparam=6)
+    position = {name: model.graph.vars[name].value for name in model.parameters}
+    new_locs = jnp.array([[0.1, 0.2], [0.5, 0.5], [0.9, 0.1], [0.3, 0.8], [0.7, 0.7]])
+    new_response = normal(key(13), (3, 5))
+    newdata = {"sample_locs": new_locs}
+
+    unbatched = model.hg(new_response, samples=position, newdata=newdata)
+    batched = model.hg(
+        new_response,
+        samples={name: value[None] for name, value in position.items()},
+        newdata=newdata,
+    )
+    assert unbatched.shape == (3, 5)
+    assert jnp.allclose(unbatched, batched[0], atol=1e-5)
+
+
+def test_scale_loss_divides_by_the_number_of_training_fields():
+    def first_loss(scale_loss: bool) -> float:
+        model = gptm.Model.new_HG(fit_y, fit_locs.copy(), nparam=6)
+        result = model.fit(
+            loss_monitor=EMA,
+            stopper=loptim.Stopper(epochs=1, patience=1),
+            scale_loss=scale_loss,
+            save_position_history=False,
+        )
+        return float(result.history.loss_train[0])
+
+    nobs = fit_y.shape[0]
+    assert first_loss(False) / first_loss(True) == pytest.approx(nobs, rel=1e-4)
+
+
+def test_response_columns_must_match_locations():
+    with pytest.raises(ValueError, match="locations"):
+        gptm.Model.new_G(jnp.ones((5, 1)), gptm.unit_grid_vars(ngrid=2))
+
+
+def test_fit_is_reproducible_by_default():
+    import inspect
+
+    assert inspect.signature(gptm.Model.fit).parameters["seed"].default == 0

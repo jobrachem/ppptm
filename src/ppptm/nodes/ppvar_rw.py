@@ -13,7 +13,7 @@ from jax.random import key
 from jax.scipy.linalg import solve_triangular
 from jax.typing import ArrayLike
 
-from ..util.locs import LocationVars
+from ..util.locs import LocationVars, lon_lat_columns
 from .kernel import GPKernel
 
 _IDENTITY_BIJECTOR = tfb.Identity()
@@ -97,7 +97,8 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         Number ``D`` of random-walk coefficients at each location. ``D`` must be at
         least three.
     bijector
-        Reserved transformation applied to the coefficient process.
+        Transformation applied elementwise to the scaled coefficient process;
+        identity by default.
     name
         Liesel node name.
     salt
@@ -181,7 +182,7 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
             B = solve_triangular(L, Bt, trans="T", lower=True)  # (M, D)
             delta_mat = (W @ B.T) @ Kdu.T  # (D, D) @ (D, M) @ (M, N) -> (D, N)
             delta_mat = delta_mat * jnp.expand_dims(amplitude, 0)
-            return delta_mat.T  # (N, D)
+            return bijector.forward(delta_mat.T)  # (N, D)
 
         super().__init__(
             lsl.Calc(
@@ -238,7 +239,8 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         samples :
             Long data frame with ``n * N * nparam`` rows and columns ``lon``, ``lat``,
             ``loc``, ``D``, ``sample``, and ``value``. It is useful for plotting
-            coefficient surfaces by index.
+            coefficient surfaces by index. Unit-sphere locations are reported as
+            degrees in ``lon`` and ``lat``.
 
         Examples
         --------
@@ -273,9 +275,7 @@ class RandomWalkParamPredictiveProcessGP(lsl.Var):
         df = pd.DataFrame(var_samples_long.T)
         df["D"] = jnp.tile(jnp.arange(D), nloc)
         df["loc"] = jnp.repeat(jnp.arange(nloc), D)
-        df["lon"] = locs.ordered.value[df["loc"].to_numpy()][:, 0]
-        df["lat"] = locs.ordered.value[df["loc"].to_numpy()][:, 1]
-        df.melt(id_vars=["D", "loc", "lon", "lat"], var_name="sample")
+        df["lon"], df["lat"] = lon_lat_columns(locs.ordered.value[df["loc"].to_numpy()])
 
         return df.melt(id_vars=["lon", "lat", "loc", "D"], var_name="sample")
 

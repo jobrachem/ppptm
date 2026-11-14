@@ -13,7 +13,7 @@ from jax.random import key
 from jax.scipy.linalg import solve_triangular
 from jax.typing import ArrayLike
 
-from ..util.locs import LocationVars
+from ..util.locs import LocationVars, lon_lat_columns
 from .kernel import GPKernel
 
 _IDENTITY_BIJECTOR = tfb.Identity()
@@ -170,7 +170,8 @@ class ParamPredictiveProcessGP(lsl.Var):
         samples :
             Long data frame with ``n * N`` rows and columns ``lon``, ``lat``,
             ``loc``, ``sample``, and ``value``. It is ready for plotting or grouped
-            summaries.
+            summaries. Unit-sphere locations are reported as degrees in ``lon``
+            and ``lat``.
 
         Examples
         --------
@@ -202,8 +203,7 @@ class ParamPredictiveProcessGP(lsl.Var):
         var_samples = var.predict(samples).squeeze(1)
 
         df = pd.DataFrame(var_samples.T)
-        df["lon"] = locs.ordered.value[:, 0]
-        df["lat"] = locs.ordered.value[:, 1]
+        df["lon"], df["lat"] = lon_lat_columns(locs.ordered.value)
         df = df.reset_index(names="loc")
 
         return df.melt(id_vars=["lon", "lat", "loc"], var_name="sample")

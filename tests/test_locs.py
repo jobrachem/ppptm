@@ -35,3 +35,14 @@ def test_from_2d_to_3d_stacks_coordinates_along_a_new_last_axis():
 
     assert gptm.Locations.from_2d_to_3d(jnp.array(0.0), jnp.array(90.0)).shape == (3,)
     assert gptm.Locations.from_2d_to_3d(jnp.array([0.0, 90.0]), 0.0).shape == (2, 3)
+
+
+def test_new_from_defaults_and_caps_the_inducing_subset():
+    coords = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+
+    every = gptm.LocationVars.new_from(coords)
+    assert every.inducing_locs.value.shape == (4, 2)
+
+    capped = gptm.LocationVars.new_from(coords, n_subset=10)
+    assert capped.locs.n_subset == 4
+    assert capped.inducing_locs.value.shape == (4, 2)
